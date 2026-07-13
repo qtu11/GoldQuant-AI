@@ -1,151 +1,163 @@
-# GoldQuant AI — Risk Manager Dashboard
+# GoldQuant AI — Dashboard Quản Lý Rủi Ro
 
-**GoldQuant AI** is a professional multi-account risk management dashboard for **XAUUSD / XAUUSDc** traders (prop, fund, multi-MT5).  
-It combines portfolio analytics, MT5 history import, economic calendar alerts, Telegram notifications, and LLM-powered advice — built with **Next.js 16**, **React 19**, **TypeScript**, **Tailwind CSS 4**, **Zustand**, and **Firebase Firestore**.
+**GoldQuant AI** là bảng điều khiển quản lý rủi ro đa tài khoản chuyên nghiệp cho trader **XAUUSD / XAUUSDc** (prop, fund, multi-MT5).
+
+Hệ thống gộp phân tích danh mục, import lịch sử MT5, lịch kinh tế & cảnh báo tin, Telegram, và tư vấn AI — xây dựng bằng **Next.js 16**, **React 19**, **TypeScript**, **Tailwind CSS 4**, **Zustand**, **Firebase Firestore**.
+
+### Liên kết nhanh
+
+| | URL |
+|--|-----|
+| **Production (Vercel)** | [https://gold-quant-ai.vercel.app](https://gold-quant-ai.vercel.app) |
+| **Repository** | [github.com/qtu11/GoldQuant-AI](https://github.com/qtu11/GoldQuant-AI) |
+| **Local dev** | [http://localhost:3000](http://localhost:3000) |
 
 ---
 
-## Table of contents
+## Mục lục
 
-1. [Overview](#overview)
-2. [Screenshots](#screenshots)
-3. [Features](#features)
-4. [Tech stack](#tech-stack)
-5. [Architecture](#architecture)
-6. [Project structure](#project-structure)
-7. [Requirements](#requirements)
-8. [Installation](#installation)
-9. [Environment variables](#environment-variables)
-10. [Running the app](#running-the-app)
-11. [Core workflows](#core-workflows)
-12. [Money & equity logic](#money--equity-logic)
-13. [Economic news & Telegram](#economic-news--telegram)
+1. [Tổng quan](#tổng-quan)
+2. [Hình ảnh giao diện](#hình-ảnh-giao-diện)
+3. [Tính năng](#tính-năng)
+4. [Công nghệ](#công-nghệ)
+5. [Kiến trúc](#kiến-trúc)
+6. [Cấu trúc dự án](#cấu-trúc-dự-án)
+7. [Yêu cầu hệ thống](#yêu-cầu-hệ-thống)
+8. [Cài đặt](#cài-đặt)
+9. [Biến môi trường](#biến-môi-trường)
+10. [Chạy ứng dụng](#chạy-ứng-dụng)
+11. [Quy trình sử dụng chính](#quy-trình-sử-dụng-chính)
+12. [Logic vốn & equity](#logic-vốn--equity)
+13. [Tin tức kinh tế & Telegram](#tin-tức-kinh-tế--telegram)
 14. [API routes](#api-routes)
-15. [MT5 export guide](#mt5-export-guide)
+15. [Hướng dẫn xuất báo cáo MT5](#hướng-dẫn-xuất-báo-cáo-mt5)
 16. [Design system](#design-system)
-17. [Security notes](#security-notes)
-18. [Troubleshooting](#troubleshooting)
-19. [License](#license)
+17. [Bảo mật](#bảo-mật)
+18. [Xử lý sự cố](#xử-lý-sự-cố)
+19. [Giấy phép](#giấy-phép)
 
 ---
 
-## Overview
+## Tổng quan
 
-| Audience | Use case |
-|----------|----------|
-| Multi-account gold traders | Monitor many MT5 accounts under one or more owners |
-| Prop / risk managers | AI risk score, drawdown, rules, Telegram breaches |
-| Operators | Weekly report, calendar alerts 5h before high-impact USD news |
+| Đối tượng | Mục đích |
+|-----------|----------|
+| Trader multi-account vàng | Giám sát nhiều TK MT5 theo chủ sở hữu |
+| Prop / risk manager | AI Risk Score, drawdown, rule, Telegram breach |
+| Vận hành | Báo cáo tuần, cảnh báo tin USD high-impact trước 5 giờ |
 
-**Product pillars**
+**Trụ cột sản phẩm**
 
-- **Portfolio risk** — equity, PnL, PF, WR, max DD, Sharpe, AI risk 0–100  
-- **Owner-first model** — create owners → attach MT5 accounts  
-- **MT5 import** — CSV / HTML / Excel / TXT → trades + balance moves → auto equity  
-- **USC / USD** — cent accounts (100 USC = 1 USD) with dual display + VND  
-- **News intelligence** — Forex Factory week feed, 5h + LIVE alerts, dual US/VN time  
-- **AI** — advisor chat, bot research (`.set` + daily PnL), capital scaling hints  
+- **Rủi ro danh mục** — equity, PnL, PF, WR, max DD, Sharpe, AI Risk 0–100  
+- **Mô hình Owner-first** — tạo chủ sở hữu → gắn TK MT5  
+- **Import MT5** — CSV / HTML / Excel / TXT → lệnh + nạp/rút → tự cập nhật equity  
+- **USC / USD** — tài khoản cent (100 USC = 1 USD), hiển thị kép + VND  
+- **Tin tức** — feed Forex Factory theo tuần, cảnh báo ≤5h + LIVE, giờ Mỹ & Việt Nam  
+- **AI** — chat advisor, nghiên cứu bot (`.set` + PnL ngày), gợi ý scale vốn  
 
 ---
 
-## Screenshots
+## Hình ảnh giao diện
 
-### Portfolio / risk overview
+### Tổng quan rủi ro (Portfolio)
 
-Aggregated KPIs: total equity (USD), profit, PF, drawdown, trade count, VaR / Monte Carlo, owner groups, live calendar.
+KPI gộp: tổng equity (USD), lợi nhuận, PF, drawdown, số lệnh, VaR / Monte Carlo, nhóm owner, lịch tin.
 
 ![Risk Dashboard Overview](./src/pic/risk_dashboard_overview_1783782099145.png)
 
-### Account detail
+### Chi tiết tài khoản
 
-AI risk breakdown, session charts, equity curve, transactions, capital moves, open positions, bot research.
+AI risk, biểu đồ phiên, equity curve, lịch sử lệnh, nạp/rút, lệnh mở, nghiên cứu bot.
 
 ![Account Detail View](./src/pic/account_detail_view_1783782109777.png)
 
-### UI demo
+### Demo UI
 
-Glassmorphism / neon motion (respects `prefers-reduced-motion` in design tokens).
+Glassmorphism / neon (tuân thủ `prefers-reduced-motion` trong design system).
 
 ![UI Demo](./src/pic/dashboard_upgraded_visual_1783782078001.webp)
 
 ---
 
-## Features
+## Tính năng
 
-### Multi-account & owners
+### Đa tài khoản & chủ sở hữu
 
-- Register **owners**, then create **MT5 accounts** bound to an owner  
-- Owners dashboard: equity, cumulative PnL, today PnL, risk, account grid  
-- Portfolio filters by owner and period (`All` / `1W` / `1M` / `1Q`)  
+- Đăng ký **chủ sở hữu**, sau đó tạo **TK MT5** gắn với owner  
+- Dashboard theo owner: equity, lãi cộng dồn, PnL hôm nay, risk, lưới thẻ TK  
+- Lọc portfolio theo owner và kỳ (`All` / `1W` / `1M` / `1Q`)  
 
-### Analytics & risk
+### Phân tích & rủi ro
 
-- **Stats:** net PnL (profit + commission + swap), WR, ROI, monthly ROI, PF, recovery, max DD, Sharpe  
-- **AI Risk Score** (0–100, higher = riskier) with sub-metrics: profitability, stability, risk control, capital efficiency, consistency, recovery  
-- **Sessions:** Asia / Europe / US (from open time)  
-- **Equity curve** including deposits/withdrawals  
-- **Risk rules** (Tools): max DD, risk score, PF, daily loss, equity halved — optional Telegram on **critical** only  
-- **Quant fallback:** VaR 95%, Monte Carlo paths (Node engine if no external quant service)  
+- **Chỉ số:** net PnL (profit + commission + swap), WR, ROI, monthly ROI, PF, recovery, max DD, Sharpe  
+- **AI Risk Score** (0–100, cao = rủi ro cao) kèm sub-metrics: profitability, stability, risk control, capital efficiency, consistency, recovery  
+- **Phiên:** Asia / Europe / US (theo giờ mở lệnh)  
+- **Equity curve** có tính nạp/rút  
+- **Risk rules** (Tools): max DD, risk score, PF, lỗ ngày, equity còn &lt; 50% — Telegram chỉ **critical**  
+- **Quant fallback:** VaR 95%, Monte Carlo (engine Node nếu không có quant service ngoài)  
 
-### MT5 history import
+### Import lịch sử MT5
 
-- Formats: **CSV, TSV, HTML, Excel (.xlsx/.xls), TXT** (UTF-8 / UTF-16)  
-- Parses **Positions** and **Deals** (LIFO partial closes, in/out)  
-- Parses **Balance / Credit** → capital moves  
-- Smart merge by fingerprint (no data loss on partial re-upload)  
-- After upload:  
-  `Equity = initial capital + closed trade PnL + net deposits/withdrawals`  
+- Định dạng: **CSV, TSV, HTML, Excel (.xlsx/.xls), TXT** (UTF-8 / UTF-16)  
+- Parse **Positions** và **Deals** (partial close LIFO, in/out)  
+- Parse **Balance / Credit** → capital moves (nạp/rút)  
+- Merge thông minh theo fingerprint (không mất lệnh khi upload partial)  
+- Sau upload:  
 
-### Currency
+```text
+Equity = vốn ban đầu + PnL lệnh đã đóng + nạp − rút
+```
 
-- Account currency: **USD** or **USC** (cent)  
-- Portfolio KPIs always aggregated in **USD**  
-- Dual labels: e.g. `3,322 USC · ≈ $33.22`  
-- Live **USD/VND** rate (multi-source cache, fallback offline)  
+### Tiền tệ
 
-### Economic calendar & news alerts
+- Đơn vị TK: **USD** hoặc **USC** (cent)  
+- KPI danh mục luôn quy **USD**  
+- Nhãn kép: ví dụ `3,322 USC · ≈ $33.22`  
+- Tỷ giá **USD/VND** realtime (nhiều nguồn, có fallback offline)  
 
-- Full-week feed (Forex Factory public JSON/CSV + disk cache + seed)  
-- Dual timezone display: **🇻🇳 Asia/Ho_Chi_Minh (GMT+7)** and **🇺🇸 US Eastern (EST/EDT)**  
-- Auto week rollover (`weekKey` = Monday VN) — invalidate cache, fetch new week  
-- Major gold-relevant events: NFP, CPI, PPI, PCE, FOMC, claims, ISM, GDP, etc.  
-- Telegram + in-app: **≤ 5 hours before** and **LIVE** window  
-- Anti-spam: one send per event/phase, API rate limits, content dedup  
+### Lịch kinh tế & cảnh báo tin
+
+- Feed full tuần (Forex Factory JSON/CSV + cache disk + seed offline)  
+- Hiển thị 2 múi giờ: **🇻🇳 Asia/Ho_Chi_Minh (GMT+7)** và **🇺🇸 US Eastern (EST/EDT)**  
+- Tự đổi tuần (`weekKey` = Monday VN) — xóa cache, nạp tuần mới  
+- Tin vàng quan trọng: NFP, CPI, PPI, PCE, FOMC, claims, ISM, GDP…  
+- Telegram + in-app: **trước ≤ 5 giờ** và cửa sổ **LIVE**  
+- Chống spam: 1 lần / sự kiện / phase, rate limit API, dedup nội dung  
 
 ### AI
 
-- **AI Advisor** — chat with portfolio context, live gold price, calendar inject  
-- Providers: **xAI (Grok)** and/or **Gemini** (`AI_PROVIDER`)  
-- **Bot research** (per account): upload EA `.set`, daily PnL series, suggested inputs as editable form (low token UX)  
-- **Daily Brief** / capital scaling hints  
+- **AI Advisor** — chat kèm portfolio, giá vàng live, inject calendar  
+- Provider: **xAI (Grok)** và/hoặc **Gemini** (`AI_PROVIDER`)  
+- **Nghiên cứu bot** (theo từng TK): nạp `.set` EA, series PnL ngày, gợi ý tham số dạng form chỉnh sửa  
+- **Daily Brief** / gợi ý capital scaling  
 
-### Tools & extras
+### Tools & tiện ích
 
-- Position size calculator (XAU)  
-- Prop challenge tracker  
+- Máy tính lot XAU  
+- Theo dõi Prop challenge  
 - Rebate calculator  
-- Compare accounts, weekly HTML report  
-- Auth gate (admin login/password → hashed session token)  
+- So sánh tài khoản, báo cáo tuần HTML  
+- Đăng nhập admin (token hash từ login/password)  
 
 ---
 
-## Tech stack
+## Công nghệ
 
-| Layer | Technology |
-|-------|------------|
+| Lớp | Công nghệ |
+|-----|-----------|
 | Framework | Next.js **16.2.10** (App Router) |
 | UI | React **19.2.4**, TypeScript **5** |
-| Styling | Tailwind CSS **4**, custom neon / glass design system |
+| Style | Tailwind CSS **4**, design neon / glass OLED |
 | State | Zustand **5** |
-| Persistence | Firebase Firestore + localStorage backup |
-| Charts | Recharts **3.9** |
+| Lưu trữ | Firebase Firestore + localStorage backup |
+| Biểu đồ | Recharts **3.9** |
 | Excel | `xlsx` **0.18** |
-| Icons | Lucide React |
-| Motion | Framer Motion (optional UI polish) |
+| Icon | Lucide React |
+| Motion | Framer Motion (UI) |
 
 ---
 
-## Architecture
+## Kiến trúc
 
 ```text
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
@@ -154,55 +166,55 @@ Glassmorphism / neon motion (respects `prefers-reduced-motion` in design tokens)
 └────────┬────────┘     └────────┬─────────┘     └─────────────────┘
          │                       │
          │              ┌────────┴─────────┐
-         │              │ External         │
+         │              │ Bên ngoài        │
          │              │ • Forex Factory  │
-         │              │ • Gold price APIs│
+         │              │ • API giá vàng   │
          │              │ • xAI / Gemini   │
          │              │ • Telegram Bot   │
          │              └──────────────────┘
          │
          ▼
-   localStorage (.data/* server cache for calendar & TG rate limits)
+   localStorage + .data/* (cache calendar, rate Telegram phía server)
 ```
 
-- **Client:** pages under `src/app/*`, components, Zustand stores  
-- **Server:** `src/app/api/**` for auth, Telegram, calendar, AI, gold price, news alerts  
-- **Domain logic:** pure utils in `src/utils/*` (analytics, parser, equity, news)  
+- **Client:** pages `src/app/*`, components, Zustand  
+- **Server:** `src/app/api/**` — auth, Telegram, calendar, AI, giá vàng, news-alerts  
+- **Domain:** `src/utils/*` (analytics, parser, equity, tin tức…)  
 
 ---
 
-## Project structure
+## Cấu trúc dự án
 
 ```text
 Dashbboard-Gold/
-├── .env.example              # Environment template
-├── design-system/MASTER.md   # UI tokens (cyberpunk neon / OLED)
-├── docs/                     # Research & assets
-├── public/                   # Static brand assets
+├── .env.example              # Mẫu biến môi trường
+├── design-system/MASTER.md   # Token UI (cyberpunk neon / OLED)
+├── docs/                     # Nghiên cứu & tài liệu
+├── public/                   # Brand tĩnh
 ├── src/
 │   ├── app/
-│   │   ├── page.tsx          # Portfolio overview + account detail
-│   │   ├── owners/           # Owner registry & owner PnL dashboard
-│   │   ├── news/             # Economic calendar + alert panel
-│   │   ├── notifications/    # In-app alerts (risk + news)
-│   │   ├── tools/            # Position size, prop, risk rules
-│   │   ├── rebate/           # Rebate calculator
-│   │   ├── admin/            # Admin view
+│   │   ├── page.tsx          # Tổng quan portfolio + chi tiết TK
+│   │   ├── owners/           # Chủ sở hữu & PnL theo owner
+│   │   ├── news/             # Lịch kinh tế + panel cảnh báo
+│   │   ├── notifications/    # Chuông in-app (risk + tin)
+│   │   ├── tools/            # Lot, prop, risk rules
+│   │   ├── rebate/           # Tính rebate
+│   │   ├── admin/            # Giao diện admin
 │   │   └── api/
 │   │       ├── auth/         # Login / verify token
-│   │       ├── telegram/     # Send message (rate-limited)
+│   │       ├── telegram/     # Gửi tin (có rate-limit)
 │   │       └── quant/
 │   │           ├── ai-advisor/
 │   │           ├── bot-research/
 │   │           ├── calendar/
 │   │           ├── gold-price/
 │   │           └── news-alerts/
-│   ├── components/           # UI (cards, charts, panels, modals)
+│   ├── components/           # UI (card, chart, panel, modal)
 │   ├── store/
 │   │   ├── useTradingStore.ts
 │   │   ├── useAuthStore.ts
 │   │   └── useToolsStore.ts
-│   ├── utils/                # Domain: analytics, fileParser, news, currency…
+│   ├── utils/                # Domain logic
 │   └── data/                 # calendar-seed.json
 ├── package.json
 └── README.md
@@ -210,91 +222,98 @@ Dashbboard-Gold/
 
 ---
 
-## Requirements
+## Yêu cầu hệ thống
 
-- **Node.js** ≥ 18 (recommend 20 LTS)  
+- **Node.js** ≥ 18 (khuyến nghị 20 LTS)  
 - **npm** / yarn / pnpm  
-- Firebase project (Firestore) for cloud sync  
-- Optional: Telegram bot, xAI and/or Gemini API keys  
+- Dự án Firebase (Firestore) để đồng bộ cloud  
+- Tuỳ chọn: Telegram bot, API key xAI và/hoặc Gemini  
 
 ---
 
-## Installation
+## Cài đặt
 
 ```bash
 # Clone
-git clone <your-repo-url> Dashbboard-Gold
+git clone <url-repo> Dashbboard-Gold
 cd Dashbboard-Gold
 
-# Install
+# Cài dependency
 npm install
 
-# Configure environment
+# Cấu hình môi trường
 cp .env.example .env
-# Edit .env with Firebase, Telegram, AI keys (see below)
+# Chỉnh .env: Firebase, Telegram, AI (xem bên dưới)
 ```
 
 ---
 
-## Environment variables
+## Biến môi trường
 
-Copy from `.env.example`:
+Sao chép từ `.env.example`:
 
-### Admin auth
+### Đăng nhập admin
 
-| Variable | Description |
-|----------|-------------|
-| `ADMIN_LOGIN` | Dashboard username |
-| `ADMIN_PASSWORD` | Dashboard password |
+| Biến | Mô tả |
+|------|--------|
+| `ADMIN_LOGIN` | Tên đăng nhập dashboard |
+| `ADMIN_PASSWORD` | Mật khẩu dashboard |
 
 ### Firebase (client)
 
-| Variable | Description |
-|----------|-------------|
+| Biến | Mô tả |
+|------|--------|
 | `NEXT_PUBLIC_FIREBASE_API_KEY` | Web API key |
 | `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Auth domain |
 | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Project ID |
 | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Storage bucket |
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Messaging sender |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | App ID |
-| `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | Optional Analytics |
+| `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | Analytics (tuỳ chọn) |
 
-Firestore collections used: **`accounts`**, **`owners`**.  
-Configure security rules appropriately for production.
+Collection Firestore: **`accounts`**, **`owners`**.  
+Cần cấu hình security rules phù hợp production.
 
 ### Telegram
 
-| Variable | Description |
-|----------|-------------|
-| `TELEGRAM_BOT_TOKEN` | BotFather token |
-| `TELEGRAM_CHAT_ID` | Target chat / channel ID |
+| Biến | Mô tả |
+|------|--------|
+| `TELEGRAM_BOT_TOKEN` | Token từ BotFather |
+| `TELEGRAM_CHAT_ID` | ID chat / kênh nhận tin |
 
-### AI (at least one recommended)
+### AI (nên có ít nhất 1 key)
 
-| Variable | Description |
-|----------|-------------|
-| `XAI_API_KEY` | xAI / Grok API key |
-| `XAI_MODEL` | Optional model override |
-| `GEMINI_API_KEY` | Google AI Studio key |
-| `AI_PROVIDER` | `xai` \| `gemini` (default prefers xAI if key set) |
+| Biến | Mô tả |
+|------|--------|
+| `XAI_API_KEY` | API key xAI / Grok |
+| `XAI_MODEL` | Ghi đè model (tuỳ chọn) |
+| `GEMINI_API_KEY` | Key Google AI Studio |
+| `AI_PROVIDER` | `xai` \| `gemini` (ưu tiên xAI nếu có key) |
 
-### Optional market data
+### Dữ liệu thị trường (tuỳ chọn)
 
-| Variable | Description |
-|----------|-------------|
-| `GOLDAPI_IO_KEY` | Gold price provider |
-| `METALPRICE_API_KEY` | Alternate metals API |
+| Biến | Mô tả |
+|------|--------|
+| `GOLDAPI_IO_KEY` | Provider giá vàng |
+| `METALPRICE_API_KEY` | API kim loại thay thế |
 
 ---
 
-## Running the app
+## Chạy ứng dụng
+
+### Production (đã deploy)
+
+- **Live app:** [https://gold-quant-ai.vercel.app](https://gold-quant-ai.vercel.app)  
+- Deploy trên **Vercel** — cấu hình biến môi trường (Firebase, Telegram, AI…) trong **Project Settings → Environment Variables**, rồi redeploy.
+
+### Local
 
 ```bash
 # Development (Turbopack)
 npm run dev
 # → http://localhost:3000
 
-# Production
+# Production build local
 npm run build
 npm start
 
@@ -302,175 +321,181 @@ npm start
 npm run lint
 ```
 
-Log in with `ADMIN_LOGIN` / `ADMIN_PASSWORD`.
+Đăng nhập bằng `ADMIN_LOGIN` / `ADMIN_PASSWORD` (trùng env trên Vercel nếu đã set).
 
 ---
 
-## Core workflows
+## Quy trình sử dụng chính
 
-### 1. Owner → MT5 account
+### 1. Chủ sở hữu → TK MT5
 
-1. Open **Owners** → create owner  
-2. **Add MT5** — set ID, broker, server, symbol, type, currency (USD/USC), initial capital, leverage  
-3. Cent accounts: **100 USC = 1 USD** (e.g. 2,000 USC = **$20**)  
+1. Vào **Owners** → tạo chủ sở hữu  
+2. **Thêm TK MT5** — ID, broker, server, symbol, loại TK, tiền tệ (USD/USC), vốn ban đầu, đòn bẩy  
+3. TK Cent: **100 USC = 1 USD** (ví dụ 2.000 USC = **$20**)  
 
-### 2. Import history
+### 2. Import lịch sử
 
-1. Export MT5 **History → Report** (HTML or Excel preferred)  
-2. Account detail → **Upload History** (or compact uploader)  
-3. System merges trades + Balance/Credit lines  
-4. Equity and stats recompute automatically  
+1. Xuất MT5 **History → Report** (ưu tiên HTML hoặc Excel)  
+2. Chi tiết TK → **Upload History**  
+3. Hệ thống merge lệnh + dòng Balance/Credit  
+4. Equity & stats tự tính lại  
 
-### 3. Capital & open positions
+### 3. Vốn & lệnh mở
 
-- **Update Capital** — reconcile equity via synthetic capital moves  
-- **Capital** tab — manual deposit/withdraw  
-- **Open Positions** — manual floating PnL (XAU contract model)  
+- **Update Capital** — đồng bộ equity (qua capital moves)  
+- Tab **Capital** — nạp/rút thủ công  
+- **Open Positions** — floating PnL thủ công (mô hình XAU)  
 
-### 4. Bot research (per account)
+### 4. Nghiên cứu bot (theo TK)
 
 1. Tab **Nghiên cứu bot**  
-2. Upload EA `.set` + optional daily PnL series  
-3. **AI phân tích** → risk + suggested params as form fields  
-4. **Áp dụng gợi ý** → **Xuất .set** for MT5  
+2. Nạp file `.set` EA + (tuỳ chọn) series lãi ngày  
+3. **AI phân tích** → risk + gợi ý tham số dạng form  
+4. **Áp dụng gợi ý** → **Xuất .set** nạp lại MT5  
 
-### 5. News & alerts
+### 5. Tin tức & cảnh báo
 
-1. Page **News** or Home calendar panel  
-2. While logged in, background poll runs news-alerts  
-3. Telegram + Notifications for high-impact gold events (≤5h + LIVE)  
+1. Trang **News** hoặc panel calendar trang chủ  
+2. Khi đã login, background poll news-alerts  
+3. Telegram + Notifications cho tin high-impact vàng (≤5h + LIVE)  
 
 ---
 
-## Money & equity logic
+## Logic vốn & equity
 
 ```text
-Closed equity = initialCapital
-              + Σ (profit + commission + swap) over closed trades
-              + Σ deposits − Σ withdrawals
+Equity đóng = vốn ban đầu
+            + Σ (profit + commission + swap) các lệnh đã đóng
+            + Σ nạp − Σ rút
 ```
 
-| Concept | Notes |
-|---------|--------|
-| **USC** | Cent account currency; portfolio totals still shown in USD |
-| **Upload merge** | Ticket + close fingerprint; partial closes preserved |
-| **Period 1W/1M** | Wall-clock window (shared across accounts); demo fallback if history is old |
-| **Today PnL** | Close-day key from trade string; “today” = Asia/Ho_Chi_Minh |
+| Khái niệm | Ghi chú |
+|-----------|---------|
+| **USC** | Đơn vị cent; KPI gộp vẫn quy USD |
+| **Merge upload** | Ticket + fingerprint close; giữ partial close |
+| **Kỳ 1W/1M** | Cửa sổ theo đồng hồ lịch (chung multi-TK); demo fallback nếu history cũ |
+| **PnL hôm nay** | Ngày từ chuỗi closeTime; “hôm nay” theo Asia/Ho_Chi_Minh |
 
-**Example (cent):** 8 accounts × 2,000 USC = 16,000 USC = **$160** initial.  
-With cumulative profits → total equity **~$280** is correct — not $16,000.
+**Ví dụ cent:** 8 TK × 2.000 USC = 16.000 USC = **$160** vốn.  
+Cộng lãi → equity gộp **~$280** là **đúng** — không phải $16.000.
 
 ---
 
-## Economic news & Telegram
+## Tin tức kinh tế & Telegram
 
-| Mechanism | Behavior |
-|-----------|----------|
-| Source | Forex Factory week JSON/CSV + cache + offline seed |
-| Week key | Monday (VN) `YYYY-MM-DD`; new week → invalidate cache |
-| Times | Event absolute UTC; UI shows VN + US Eastern |
-| Pre-alert | Remaining time ≤ 5h and > 30m (one shot per event) |
-| LIVE | −15m … +25m around release |
-| Anti-spam | Per-event TG mark even on failure; API ≥40s gap; content dedup 10m; risk TG critical-only 1×/day/rule |
+| Cơ chế | Hành vi |
+|--------|---------|
+| Nguồn | Forex Factory tuần (JSON/CSV) + cache + seed offline |
+| Week key | Monday (VN) `YYYY-MM-DD`; tuần mới → xóa cache |
+| Giờ | Absolute UTC; UI: VN + US Eastern |
+| Pre-alert | Còn ≤ 5h và > 30 phút (1 lần / sự kiện) |
+| LIVE | −15 phút … +25 phút quanh giờ công bố |
+| Chống spam | Mark đã gửi kể cả fail; API ≥40s; dedup 10 phút; risk TG chỉ critical 1×/ngày/rule |
 
-**Optional cron** (if the browser is closed):
+**Cron tuỳ chọn** (khi không mở trình duyệt):
 
 ```bash
+# Local
 curl -X POST http://localhost:3000/api/quant/news-alerts
+
+# Production (Vercel)
+curl -X POST https://gold-quant-ai.vercel.app/api/quant/news-alerts
 ```
 
-Server cache files under `.data/` (gitignored): calendar cache, news-alerts dedup, Telegram rate files.
+File cache server trong `.data/` (thường gitignore): calendar, dedup news-alerts, rate Telegram.
 
 ---
 
 ## API routes
 
-| Method | Path | Purpose |
-|--------|------|---------|
+| Method | Path | Mục đích |
+|--------|------|----------|
 | `POST` | `/api/auth` | `login` / `verify` |
-| `POST` | `/api/telegram` | Send HTML message (rate-limited) |
-| `GET` | `/api/quant/calendar` | Full-week calendar (`force=1`, filters) |
-| `GET/POST` | `/api/quant/news-alerts` | Check/send news alerts (`dry=1` preview) |
-| `GET` | `/api/quant/gold-price` | Live XAU quote |
-| `POST` | `/api/quant/ai-advisor` | Chat advisor |
-| `POST` | `/api/quant/bot-research` | Structured bot param suggestions |
+| `POST` | `/api/telegram` | Gửi tin HTML (rate-limit) |
+| `GET` | `/api/quant/calendar` | Lịch full tuần (`force=1`, filter) |
+| `GET/POST` | `/api/quant/news-alerts` | Kiểm tra/gửi cảnh báo tin (`dry=1` xem trước) |
+| `GET` | `/api/quant/gold-price` | Giá XAU live |
+| `POST` | `/api/quant/ai-advisor` | Chat AI advisor |
+| `POST` | `/api/quant/bot-research` | Gợi ý tham số bot có cấu trúc |
 
 ---
 
-## MT5 export guide
+## Hướng dẫn xuất báo cáo MT5
 
-1. Open **MetaTrader 5**  
+1. Mở **MetaTrader 5**  
 2. **Toolbox → History**  
-3. Right-click → **Report** → **HTML** or **Open XML (Excel)**  
-4. Prefer a **full period** report (Positions table is best)  
-5. Drag & drop into GoldQuant **Upload History**  
+3. Chuột phải → **Report** → **HTML** hoặc **Open XML (Excel)**  
+4. Nên xuất **đủ kỳ** (bảng Positions là tốt nhất)  
+5. Kéo thả vào **Upload History** trên GoldQuant  
 
-**Tips**
+**Lưu ý**
 
-- Positions table: open/close time & prices preferred  
-- Deals table: LIFO matching + Balance/Credit → capital moves  
-- Re-upload merges; does not wipe unrelated tickets  
+- Bảng Positions: đủ open/close time & giá  
+- Bảng Deals: ghép LIFO + Balance/Credit → nạp/rút  
+- Upload lại: merge, không xóa ticket khác  
 
 ---
 
 ## Design system
 
-- Source of truth: `design-system/MASTER.md`  
-- Style: **Cyberpunk Neon + OLED Dark**, high motion density  
-- Skills: UI/UX Pro Max under `.agents/skills/`  
-- Respect **`prefers-reduced-motion`**  
+- Nguồn chuẩn: `design-system/MASTER.md`  
+- Phong cách: **Cyberpunk Neon + OLED Dark**, density dashboard  
+- Skills UI/UX: `.agents/skills/`  
+- Tôn trọng **`prefers-reduced-motion`**  
 
 ---
 
-## Security notes
+## Bảo mật
 
-- Change default admin credentials in production  
-- Never commit `.env`  
-- Restrict Firestore rules (authenticated or locked-down write paths)  
-- Telegram route is unauthenticated by design for local ops — protect with network / reverse proxy in production  
-- API keys for AI and gold price stay server-side only (no `NEXT_PUBLIC_` prefix)  
-
----
-
-## Troubleshooting
-
-| Issue | What to check |
-|-------|----------------|
-| Login fails | `ADMIN_LOGIN` / `ADMIN_PASSWORD`; restart after `.env` change |
-| Empty accounts | Firebase config + Firestore rules; check browser console / localStorage fallback |
-| Equity “too small” on cent | 100 USC = $1; 2,000 USC = $20 — confirm MT5 balance units |
-| Upload 0 trades | Use full History report; Positions sheet; not only open orders |
-| Telegram spam (legacy) | Restart server; dedup files in `.data/`; update to latest anti-spam build |
-| Calendar stale | News refresh / `force=1`; Monday week rollover; FF 429 → wait or seed |
-| AI empty / 429 | Set `XAI_API_KEY` and/or `GEMINI_API_KEY`; chain falls back to rule engine |
+- Đổi mật khẩu admin mặc định trên production  
+- Không commit file `.env`  
+- Siết Firestore rules (chỉ write hợp lệ)  
+- Route Telegram không auth — bảo vệ bằng mạng / reverse proxy khi public  
+- Key AI và giá vàng chỉ server-side (không prefix `NEXT_PUBLIC_`)  
 
 ---
 
-## Scripts reference
+## Xử lý sự cố
+
+| Vấn đề | Kiểm tra |
+|--------|----------|
+| Login fail | `ADMIN_LOGIN` / `ADMIN_PASSWORD`; restart sau khi sửa `.env` |
+| Không thấy TK | Firebase config + rules; console / fallback localStorage |
+| Equity “quá nhỏ” (cent) | 100 USC = $1; 2.000 USC = $20 — đối chiếu đơn vị MT5 |
+| Upload 0 lệnh | Report History đầy đủ; sheet Positions; không chỉ open orders |
+| Spam Telegram (bản cũ) | Restart server; file `.data/*`; dùng bản anti-spam mới |
+| Calendar cũ | Refresh / `force=1`; rollover Monday; FF 429 → đợi hoặc seed |
+| AI trống / 429 | Cấu hình `XAI_API_KEY` và/hoặc `GEMINI_API_KEY`; fallback rule engine |
+
+---
+
+## Scripts
 
 ```bash
-npm run dev      # Local development
-npm run build    # Production build
-npm start        # Serve production build
+npm run dev      # Chạy local
+npm run build    # Build production
+npm start        # Serve production
 npm run lint     # ESLint
 ```
 
 ---
 
-## License
+## Giấy phép
 
-Private / proprietary unless otherwise stated by the repository owner.  
-Not financial advice. Trading XAU involves substantial risk of loss.
+Dự án private / độc quyền trừ khi chủ repo quy định khác.  
+**Không phải lời khuyên đầu tư.** Giao dịch XAU có rủi ro mất vốn.
 
 ---
 
-## Credits
+## Ghi nhận
 
-- **Product:** GoldQuant AI Risk Manager  
+- **Sản phẩm:** GoldQuant AI Risk Manager  
 - **Stack:** Next.js · React · Tailwind · Zustand · Firebase · Recharts  
-- **Calendar data:** Forex Factory public weekly feed (third-party; subject to rate limits)  
-- **Design:** OLED neon / liquid glass dashboard system  
+- **Lịch tin:** feed công khai Forex Factory (bên thứ ba, có thể rate-limit)  
+- **Design:** OLED neon / liquid glass dashboard  
 
 ---
 
-**GoldQuant AI** — multi-account XAU risk, import, news, and AI in one dashboard.
+**GoldQuant AI** — rủi ro multi-account XAU, import MT5, tin tức và AI trong một dashboard.
+
+**Live:** [https://gold-quant-ai.vercel.app](https://gold-quant-ai.vercel.app)

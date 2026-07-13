@@ -95,10 +95,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
       notifications: [...newNotifs, ...notifications].slice(0, 50),
     });
 
-    if (riskRules.telegramOnBreach) {
-      void sendTelegramAlert(formatBreachesForTelegram(newOnes));
+    // Chỉ Telegram critical (tránh spam warning mỗi lần loadAccounts)
+    const critical = newOnes.filter((b) => b.severity === 'critical');
+    if (riskRules.telegramOnBreach && critical.length > 0) {
+      void sendTelegramAlert(formatBreachesForTelegram(critical));
     }
-    setLastBreachKeys([...new Set([...prevKeys, ...keys])].slice(-40));
+    // Lưu cả warning keys để không bắn lại in-app/TG trong ngày
+    setLastBreachKeys([...new Set([...prevKeys, ...keys])].slice(-80));
   }, [accounts, riskRules, setLastBreachKeys, isAuthenticated]);
 
   // Loading state

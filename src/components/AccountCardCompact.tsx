@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { TradingAccount } from '../store/useTradingStore';
-import { toUsd } from '../utils/currency';
+import { formatMoneyDual, toUsd } from '../utils/currency';
 import { calculateRiskScore } from '../utils/analytics';
 import { displayOwnerName, isUnassignedOwner } from '../utils/ownerStats';
 import {
@@ -71,15 +71,14 @@ export default function AccountCardCompact({
   const StatusIcon =
     status === 'Healthy' ? CheckCircle2 : status === 'Moderate' ? AlertTriangle : XOctagon;
 
-  // Format equity
+  const equityDual = formatMoneyDual(currentEquity, currency);
+  const profitDual = formatMoneyDual(stats.netProfit, currency, { signed: true });
   const equityDisplay = isCent
-    ? `${Math.round(currentEquity).toLocaleString()} USC`
-    : `$${Math.round(currentEquity).toLocaleString()}`;
-
-  // Format profit
+    ? `${equityDual.primary} ${equityDual.secondary}`
+    : equityDual.primary;
   const profitDisplay = isCent
-    ? `${isProfitPositive ? '+' : ''}${Math.round(stats.netProfit).toLocaleString()} USC`
-    : `${isProfitPositive ? '+' : ''}$${Math.round(stats.netProfit).toLocaleString()}`;
+    ? `${profitDual.primary} ${profitDual.secondary}`
+    : profitDual.primary;
 
   return (
     <article

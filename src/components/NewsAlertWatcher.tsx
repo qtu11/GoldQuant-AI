@@ -10,9 +10,10 @@
 import { useEffect, useRef } from 'react';
 import { useTradingStore } from '../store/useTradingStore';
 
-const POLL_VISIBLE_MS = 60_000;
-const POLL_HIDDEN_MS = 3 * 60_000;
-const BOOT_DELAY_MS = 2_500;
+// Poll chậm hơn — chống spam API + Telegram (server vẫn rate-limit)
+const POLL_VISIBLE_MS = 2 * 60_000; // 2 phút
+const POLL_HIDDEN_MS = 5 * 60_000; // 5 phút tab ẩn
+const BOOT_DELAY_MS = 4_000;
 
 interface AlertItem {
   eventId: string;

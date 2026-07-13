@@ -97,6 +97,74 @@ export function formatCurrency(
   return formatted;
 }
 
+/**
+ * Hiển thị dual: số gốc (USC hoặc USD) + quy đổi.
+ * Cent: primary "3,322 USC" · secondary "≈ $33.22" — 100 USC = $1.
+ */
+export function formatMoneyDual(
+  amount: number,
+  currency: AccountCurrency,
+  opts?: { signed?: boolean }
+): { primary: string; secondary: string; usd: number } {
+  const n = Number(amount) || 0;
+  const signed = !!opts?.signed;
+  const usd = toUsd(n, currency);
+  const fmtUsd = (u: number) => {
+    const a = Math.abs(u);
+    const body = `$${a.toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })}`;
+    if (u < 0) return `−${body}`;
+    if (u > 0 && signed) return `+${body}`;
+    return body;
+  };
+  const fmtUsc = (u: number) => {
+    const a = Math.abs(u);
+    // Giữ 0–2 chữ số thập phân (không làm tròn mất 0.5 USC)
+    const body = `${a.toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })} USC`;
+    if (u < 0) return `−${body}`;
+    if (u > 0 && signed) return `+${body}`;
+    return body;
+  };
+
+  if (currency === 'USC') {
+    return {
+      primary: fmtUsc(n),
+      secondary: `≈ ${fmtUsd(usd)}`,
+      usd,
+    };
+  }
+  return {
+    primary: fmtUsd(n),
+    secondary: '',
+    usd: n,
+  };
+}
+
+/** Gộp portfolio: luôn quy USD; nếu toàn Cent thì thêm tổng USC */
+export function sumPortfolioUsd(
+  items: { amount: number; currency: AccountCurrency }[]
+): { usd: number; allUsc: boolean; totalUsc: number } {
+  let usd = 0;
+  let totalUsc = 0;
+  let allUsc = items.length > 0;
+  items.forEach((it) => {
+    const c = normalizeCurrency(it.currency);
+    usd += toUsd(it.amount, c);
+    if (c === 'USC') totalUsc += Number(it.amount) || 0;
+    else allUsc = false;
+  });
+  return {
+    usd: Math.round(usd * 100) / 100,
+    allUsc,
+    totalUsc: Math.round(totalUsc * 100) / 100,
+  };
+}
+
 // ==========================================
 // TỶ GIÁ USD/VND REALTIME
 // ==========================================

@@ -10,8 +10,22 @@ import {
   UNASSIGNED_OWNER_KEY,
   type OwnerSummary,
 } from '../../utils/ownerStats';
-import { toUsd, formatVnd, formatUsd, getUsdVndRate, usdToVnd } from '../../utils/currency';
-import { calculateStats, filterTradesByPeriod } from '../../utils/analytics';
+import {
+  toUsd,
+  formatVnd,
+  formatUsd,
+  getUsdVndRate,
+  usdToVnd,
+  sumPortfolioUsd,
+} from '../../utils/currency';
+import {
+  calculateStats,
+  dayNetProfit,
+  equityAtCutoff,
+  filterCapitalMovesByPeriod,
+  filterTradesByPeriod,
+  periodCutoffMs,
+} from '../../utils/analytics';
 import SegmentedControl from '../../components/ui/SegmentedControl';
 import AccountCard from '../../components/AccountCard';
 import EditAccountModal from '../../components/EditAccountModal';
@@ -253,6 +267,30 @@ function OwnersContent() {
   // ——— Dashboard 1 chủ sở hữu ———
   if (selectedKey && selected) {
     const profitPos = selected.totalProfitUsd >= 0;
+    const eqNative = sumPortfolioUsd(
+      selected.accounts.map((a) => ({
+        amount: a.currentEquity,
+        currency: a.currency,
+      }))
+    );
+    const initNative = sumPortfolioUsd(
+      selected.accounts.map((a) => ({
+        amount: a.initialCapital,
+        currency: a.currency,
+      }))
+    );
+    const todayUscOrUsd = selected.accounts.reduce((s, a) => {
+      const d = dayNetProfit(a.trades || []);
+      return s + toUsd(d, a.currency);
+    }, 0);
+    const todayNative = selected.accounts.reduce((s, a) => {
+      if (a.currency !== 'USC') return s;
+      return s + dayNetProfit(a.trades || []);
+    }, 0);
+    const centHint = eqNative.allUsc
+      ? `${eqNative.totalUsc.toLocaleString('en-US')} USC · 100 USC = $1`
+      : undefined;
+
     return (
       <div className="space-y-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -284,7 +322,8 @@ function OwnersContent() {
                   {selected.ownerName}
                 </h2>
                 <p className="text-xs text-dark-text-muted mt-0.5">
-                  Dashboard quản lý · {selected.accountCount} TK MT5
+                  Dashboard · {selected.accountCount} TK MT5
+                  {eqNative.allUsc ? ' · toàn Cent (USC)' : ''}
                   {selectedRegistry?.note ? ` · ${selectedRegistry.note}` : ''}
                 </p>
               </div>
@@ -327,38 +366,81 @@ function OwnersContent() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 stagger-children">
           <OwnerKpiCard
-            label="Tổng Equity"
+            label="Tổng Equity (USD)"
             value={formatUsd(selected.totalEquityUsd)}
-            sub={`≈ ${formatVnd(usdToVnd(selected.totalEquityUsd, vndRate))}`}
+            sub={
+              centHint
+                ? `${centHint} · ≈ ${formatVnd(usdToVnd(selected.totalEquityUsd, vndRate))}`
+                : `≈ ${formatVnd(usdToVnd(selected.totalEquityUsd, vndRate))}`
+            }
             icon={Wallet}
             accent="kpi-yellow"
           />
           <OwnerKpiCard
-            label="Lợi nhuận"
+            label="Vốn ban đầu (USD)"
+            value={formatUsd(initNative.usd)}
+            sub={
+              initNative.allUsc
+                ? `${initNative.totalUsc.toLocaleString('en-US')} USC · ≈ $${initNative.usd.toFixed(0)}`
+                : `Quy USD gộp`
+            }
+            icon={Layers}
+            accent="kpi-blue"
+          />
+          <OwnerKpiCard
+            label="Lãi cộng dồn (USD)"
             value={formatUsd(selected.totalProfitUsd, true)}
-            sub={`ROI ${selected.portfolioRoi}%`}
+            sub={`ROI ${selected.portfolioRoi}% · Equity = vốn + lãi`}
             icon={TrendingUp}
             accent="kpi-green"
             valueClass={profitPos ? 'text-neon-green' : 'text-neon-pink'}
           />
           <OwnerKpiCard
-            label="Tổng lệnh"
-            value={String(selected.totalTrades)}
-            sub={`WR ${selected.avgWinRate}% · PF ${selected.avgProfitFactor}`}
-            icon={Target}
+            label="PnL hôm nay (USD)"
+            value={formatUsd(todayUscOrUsd, true)}
+            sub={
+              eqNative.allUsc && todayNative !== 0
+                ? `${todayNative >= 0 ? '+' : ''}${Math.round(todayNative).toLocaleString('en-US')} USC`
+                : 'Theo closeTime local'
+            }
+            icon={Activity}
             accent="kpi-cyan"
+            valueClass={
+              todayUscOrUsd >= 0 ? 'text-neon-cyan' : 'text-neon-pink'
+            }
           />
           <OwnerKpiCard
-            label="Rủi ro"
-            value={selected.accountCount > 0 ? String(selected.avgRiskScore) : '—'}
-            sub={`Avg DD ${selected.avgDrawdown}%`}
+            label="Rủi ro / Lệnh"
+            value={
+              selected.accountCount > 0
+                ? `${selected.avgRiskScore} · ${selected.totalTrades}`
+                : '—'
+            }
+            sub={`WR ${selected.avgWinRate}% · DD ${selected.avgDrawdown}% · PF ${selected.avgProfitFactor}`}
             icon={ShieldAlert}
             accent="kpi-pink"
             valueClass="text-neon-pink"
           />
         </div>
+
+        {eqNative.allUsc && (
+          <div className="rounded-2xl border border-neon-cyan/25 bg-neon-cyan/5 px-4 py-3 text-[11px] text-dark-text-muted leading-relaxed">
+            <strong className="text-neon-cyan">Cent account (USC):</strong> 100 USC = 1 USD.
+            {selected.accountCount} TK · vốn gộp{' '}
+            <strong className="text-white">
+              {initNative.totalUsc.toLocaleString('en-US')} USC ≈ ${initNative.usd.toFixed(2)}
+            </strong>
+            {' · '}equity gộp{' '}
+            <strong className="text-white">
+              {eqNative.totalUsc.toLocaleString('en-US')} USC ≈ ${selected.totalEquityUsd.toFixed(2)}
+            </strong>
+            {' · '}lãi cộng dồn ≈ ${selected.totalProfitUsd.toFixed(2)}.
+            Công thức: <strong className="text-white">Equity = vốn ban đầu + PnL lệnh (cộng dồn) + nạp/rút</strong>.
+            Upload .xlsx mỗi ngày → merge lệnh → tự cập nhật equity & lãi.
+          </div>
+        )}
 
         {selected.unassigned && (
           <div className="rounded-2xl border border-neon-yellow/30 bg-neon-yellow/5 px-4 py-3 text-xs text-neon-yellow">
@@ -452,11 +534,19 @@ function OwnersContent() {
                 <tbody>
                   {selected.accounts.map((acc) => {
                     const eq = toUsd(acc.currentEquity, acc.currency);
-                    const periodStats = calculateStats(
-                      filterTradesByPeriod(acc.trades || [], period),
-                      acc.initialCapital,
-                      acc.capitalMoves || []
-                    );
+                    const allTrades = acc.trades || [];
+                    const allMoves = acc.capitalMoves || [];
+                    const ft = filterTradesByPeriod(allTrades, period);
+                    const cutoff = periodCutoffMs(allTrades, period);
+                    const startCap =
+                      cutoff == null
+                        ? acc.initialCapital
+                        : equityAtCutoff(allTrades, acc.initialCapital, allMoves, cutoff);
+                    const movesInPeriod =
+                      cutoff == null
+                        ? allMoves
+                        : filterCapitalMovesByPeriod(allMoves, cutoff);
+                    const periodStats = calculateStats(ft, startCap, movesInPeriod);
                     const pnl = toUsd(periodStats.netProfit, acc.currency);
                     return (
                       <tr

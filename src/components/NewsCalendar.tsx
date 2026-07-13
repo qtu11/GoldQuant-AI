@@ -168,9 +168,15 @@ export default function NewsCalendar() {
   }, []);
 
   useEffect(() => {
+    // Lần đầu force=false (dùng cache tuần hiện tại); interval 10p
+    // Mỗi giờ force=1 để bắt FF tuần mới khi sang Monday
     void load(false);
-    const t = setInterval(() => void load(false), 10 * 60 * 1000);
-    return () => clearInterval(t);
+    const soft = setInterval(() => void load(false), 10 * 60 * 1000);
+    const hard = setInterval(() => void load(true), 60 * 60 * 1000);
+    return () => {
+      clearInterval(soft);
+      clearInterval(hard);
+    };
   }, [load]);
 
   // Countdown ETA mỗi 30s (theo ngày/giờ hiện tại)

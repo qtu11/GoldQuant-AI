@@ -70,9 +70,11 @@ const FileUpload = forwardRef<FileUploadHandle, FileUploadProps>(function FileUp
           else type = 'html';
         }
 
-        const trades = await parseFile(buffer, type);
+        const parsed = await parseFile(buffer, type);
+        const trades = parsed.trades || [];
+        const capitalMoves = parsed.capitalMoves || [];
 
-        if (trades.length === 0) {
+        if (trades.length === 0 && capitalMoves.length === 0) {
           setStatus('error');
           setErrorMessage(
             `Không tìm thấy lệnh đóng hợp lệ trong "${file.name}" (${getFileTypeLabel(type)}). ` +
@@ -81,8 +83,8 @@ const FileUpload = forwardRef<FileUploadHandle, FileUploadProps>(function FileUp
           return;
         }
 
-        // Upload full report → thay thế history (parseFile đã gộp đúng)
-        await uploadHistory(accountId, trades);
+        // Merge trades + Balance/Credit → equity = vốn + PnL + nạp/rút
+        await uploadHistory(accountId, trades, capitalMoves);
         setTradeCount(trades.length);
         setStatus('success');
 

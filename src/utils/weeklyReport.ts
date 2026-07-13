@@ -1,7 +1,14 @@
 import { TradingAccount } from '../store/useTradingStore';
 import { toUsd } from './currency';
 import { netCapitalMoves, totalFloatingPnl } from './capitalEquity';
-import { filterTradesByPeriod, calculateStats, calculateRiskScore } from './analytics';
+import {
+  filterTradesByPeriod,
+  calculateStats,
+  calculateRiskScore,
+  equityAtCutoff,
+  filterCapitalMovesByPeriod,
+  periodCutoffMs,
+} from './analytics';
 
 /**
  * Sinh HTML báo cáo tuần (in / Save as PDF từ browser).
@@ -25,8 +32,17 @@ export function buildWeeklyReportHtml(
 
   const rows = accounts
     .map((a) => {
-      const weekTrades = filterTradesByPeriod(a.trades || [], '1w');
-      const weekStats = calculateStats(weekTrades, a.initialCapital, a.capitalMoves || []);
+      const allTrades = a.trades || [];
+      const allMoves = a.capitalMoves || [];
+      const weekTrades = filterTradesByPeriod(allTrades, '1w');
+      const cutoff = periodCutoffMs(allTrades, '1w');
+      const startCap =
+        cutoff == null
+          ? a.initialCapital
+          : equityAtCutoff(allTrades, a.initialCapital, allMoves, cutoff);
+      const weekMoves =
+        cutoff == null ? allMoves : filterCapitalMovesByPeriod(allMoves, cutoff);
+      const weekStats = calculateStats(weekTrades, startCap, weekMoves);
       const risk = calculateRiskScore(a.stats);
       const moves = netCapitalMoves(a.capitalMoves || []);
       return `

@@ -31,8 +31,74 @@ function capitalMoveTimeMs(m: CapitalMove): number {
 }
 
 /**
- * Lọc trades theo period (dùng mốc closeTime mới nhất trong sample làm "now"
- * để dữ liệu lịch sử demo vẫn filter được, không phụ thuộc đồng hồ hệ thống).
+ * Ngày lịch từ chuỗi MT5/Excel — ưu tiên parse wall date trong string
+ * (tránh lệch ngày khi ISO UTC convert local).
+ */
+export function tradeDayKey(closeOrOpen: string): string {
+  const s = String(closeOrOpen || '').trim();
+  const m = s.match(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
+  if (m) {
+    return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  }
+  const d = parseDate(s);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Hôm nay theo Asia/Ho_Chi_Minh (trader VN) */
+export function todayKeyVn(now = Date.now()): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(now));
+  } catch {
+    const n = new Date(now);
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  }
+}
+
+/**
+ * PnL ròng các lệnh đóng trong 1 ngày.
+ * @param dayKey YYYY-MM-DD — mặc định hôm nay VN; nếu không khớp lệnh nào
+ *   và data lịch sử, fallback = ngày close mới nhất trong sample (demo).
+ */
+export function dayNetProfit(trades: Trade[], dayKey?: string): number {
+  if (!trades?.length) return 0;
+  let key = dayKey || todayKeyVn();
+  const sumFor = (k: string) => {
+    let sum = 0;
+    let n = 0;
+    trades.forEach((t) => {
+      if (tradeDayKey(t.closeTime || t.openTime) === k) {
+        sum += t.profit + t.commission + t.swap;
+        n += 1;
+      }
+    });
+    return { sum: Math.round(sum * 100) / 100, n };
+  };
+  let r = sumFor(key);
+  // Fallback: file demo / lịch sử không có "hôm nay" → lấy ngày giao dịch mới nhất
+  if (r.n === 0 && !dayKey) {
+    const days = trades
+      .map((t) => tradeDayKey(t.closeTime || t.openTime))
+      .filter(Boolean)
+      .sort();
+    if (days.length) {
+      key = days[days.length - 1];
+      r = sumFor(key);
+    }
+  }
+  return r.sum;
+}
+
+/**
+ * Lọc trades theo period.
+ * - Mặc định: mốc = Date.now() (cùng lịch multi-account / portfolio).
+ * - Nếu sample “tương lai” so với now (demo) hoặc không có lệnh trong cửa sổ:
+ *   fallback mốc = closeTime mới nhất trong sample.
  */
 export function filterTradesByPeriod(trades: Trade[], period: string): Trade[] {
   if (!trades.length || period === 'all') return trades;
@@ -47,16 +113,29 @@ export function filterTradesByPeriod(trades: Trade[], period: string): Trade[] {
   if (!days) return trades;
 
   const closeTimes = trades
-    .map(t => parseDate(t.closeTime || t.openTime).getTime())
-    .filter(t => !isNaN(t));
+    .map((t) => parseDate(t.closeTime || t.openTime).getTime())
+    .filter((t) => !isNaN(t));
   if (!closeTimes.length) return trades;
 
   const maxTime = Math.max(...closeTimes);
-  const cutoff = maxTime - days * 24 * 60 * 60 * 1000;
-  return trades.filter(t => {
+  const now = Date.now();
+  // Live: dùng now; sample demo (toàn lệnh trong quá khứ xa so với now) vẫn dùng now
+  // Chỉ khi maxTime > now+1d (đồng hồ lệch) → neo theo maxTime
+  const anchor = maxTime > now + 86400000 ? maxTime : now;
+  const cutoff = anchor - days * 24 * 60 * 60 * 1000;
+  const filtered = trades.filter((t) => {
     const tClose = parseDate(t.closeTime || t.openTime).getTime();
-    return !isNaN(tClose) && tClose >= cutoff;
+    return !isNaN(tClose) && tClose >= cutoff && tClose <= anchor + 3600000;
   });
+  // Demo history: nếu empty với now-anchor, fallback sample-relative
+  if (!filtered.length && maxTime < now - days * 86400000) {
+    const demoCutoff = maxTime - days * 24 * 60 * 60 * 1000;
+    return trades.filter((t) => {
+      const tClose = parseDate(t.closeTime || t.openTime).getTime();
+      return !isNaN(tClose) && tClose >= demoCutoff;
+    });
+  }
+  return filtered;
 }
 
 /**
@@ -290,7 +369,7 @@ export function equityAtCutoff(
   return Math.round(eq * 100) / 100;
 }
 
-/** Cutoff ms theo period (mốc = closeTime mới nhất trong sample). */
+/** Cutoff ms theo period — đồng bộ filterTradesByPeriod (now, fallback sample). */
 export function periodCutoffMs(trades: Trade[], period: string): number | null {
   if (!trades.length || period === 'all') return null;
   const daysMap: Record<string, number> = {
@@ -305,7 +384,16 @@ export function periodCutoffMs(trades: Trade[], period: string): number | null {
     .map((t) => parseDate(t.closeTime || t.openTime).getTime())
     .filter((t) => !isNaN(t));
   if (!closeTimes.length) return null;
-  return Math.max(...closeTimes) - days * 24 * 60 * 60 * 1000;
+  const maxTime = Math.max(...closeTimes);
+  const now = Date.now();
+  const anchor = maxTime > now + 86400000 ? maxTime : now;
+  let cutoff = anchor - days * 24 * 60 * 60 * 1000;
+  // Demo fallback
+  const hasInWindow = closeTimes.some((t) => t >= cutoff && t <= anchor + 3600000);
+  if (!hasInWindow && maxTime < now - days * 86400000) {
+    cutoff = maxTime - days * 24 * 60 * 60 * 1000;
+  }
+  return cutoff;
 }
 
 /** Moves trong period (sau cutoff). */

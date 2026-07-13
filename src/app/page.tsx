@@ -26,7 +26,13 @@ import { toUsd, formatVnd, formatUsd, getUsdVndRate, usdToVnd } from '../utils/c
 import { parseDate } from '../utils/fileParser';
 import { totalFloatingPnl } from '../utils/capitalEquity';
 import { openWeeklyReport } from '../utils/weeklyReport';
-import { filterTradesByPeriod, calculateStats } from '../utils/analytics';
+import {
+  filterTradesByPeriod,
+  calculateStats,
+  equityAtCutoff,
+  filterCapitalMovesByPeriod,
+  periodCutoffMs,
+} from '../utils/analytics';
 import {
   groupAccountsByOwner,
   normalizeOwnerKey,
@@ -287,13 +293,25 @@ export default function Home() {
     const totalAccounts = filteredAccounts.length;
     // Period filter portfolio: tính lại stats theo period cho KPI
     const periodStats = filteredAccounts.map((a) => {
-      const ft = filterTradesByPeriod(a.trades || [], portfolioPeriod);
+      const allTrades = a.trades || [];
+      const allMoves = a.capitalMoves || [];
+      const ft = filterTradesByPeriod(allTrades, portfolioPeriod);
+      const cutoff = periodCutoffMs(allTrades, portfolioPeriod);
+      const startCap =
+        cutoff == null
+          ? a.initialCapital
+          : equityAtCutoff(allTrades, a.initialCapital, allMoves, cutoff);
+      const movesInPeriod =
+        cutoff == null ? allMoves : filterCapitalMovesByPeriod(allMoves, cutoff);
       return {
         acc: a,
-        stats: calculateStats(ft, a.initialCapital, a.capitalMoves || []),
+        stats: calculateStats(ft, startCap, movesInPeriod),
       };
     });
     const totalEquityUsd = filteredAccounts.reduce((sum, a) => sum + toUsd(a.currentEquity, a.currency), 0);
+    const totalEquityUsc = filteredAccounts.every((a) => a.currency === 'USC')
+      ? filteredAccounts.reduce((s, a) => s + (a.currentEquity || 0), 0)
+      : null;
     const totalProfitUsd = periodStats.reduce(
       (sum, { acc, stats }) => sum + toUsd(stats.netProfit, acc.currency),
       0
@@ -413,6 +431,9 @@ export default function Home() {
                     {formatUsd(totalEquityUsd)}
                   </span>
                   <span className="text-[10px] text-neon-yellow/80 font-mono mt-1 block">
+                    {totalEquityUsc != null
+                      ? `${Math.round(totalEquityUsc).toLocaleString('en-US')} USC · 100 USC=$1 · `
+                      : ''}
                     ≈ {formatVnd(usdToVnd(totalEquityUsd, vndRate))}
                   </span>
                 </div>
@@ -428,7 +449,7 @@ export default function Home() {
                     {formatUsd(totalProfitUsd, true)}
                   </span>
                   <span className={`text-[10px] font-mono mt-1 block ${totalProfitUsd >= 0 ? 'text-neon-green/70' : 'text-neon-pink/70'}`}>
-                    ≈ {totalProfitUsd >= 0 ? '+' : '−'}{formatVnd(Math.abs(usdToVnd(totalProfitUsd, vndRate)))}
+                    Cộng dồn · ≈ {totalProfitUsd >= 0 ? '+' : '−'}{formatVnd(Math.abs(usdToVnd(totalProfitUsd, vndRate)))}
                   </span>
                 </div>
               </div>

@@ -120,7 +120,16 @@ interface TradingStore {
   deleteOwner: (id: string) => Promise<void>;
   createAccount: (accountData: AccountMeta) => Promise<void>;
   updateCapital: (id: string, initialCapital: number, currentEquity: number) => Promise<void>;
-  uploadHistory: (id: string, trades: Trade[]) => Promise<void>;
+  uploadHistory: (
+    id: string,
+    trades: Trade[],
+    capitalMovesFromFile?: Array<{
+      type: 'deposit' | 'withdrawal';
+      amount: number;
+      date: string;
+      note?: string;
+    }>
+  ) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
   editAccount: (id: string, updatedData: Partial<AccountMeta>) => Promise<void>;
   markAllNotificationsRead: () => void;
@@ -212,16 +221,15 @@ function statusFromRisk(label: string): TradingAccount['status'] {
   return 'Healthy';
 }
 
-/** Key ổn định để merge history — ưu tiên ticket, fallback fingerprint đầy đủ */
+/**
+ * Key merge history — ticket + close fingerprint.
+ * Không chỉ ticket: partial close / cùng order id sẽ ghi đè mất lệnh.
+ */
 function tradeKey(t: Trade): string {
   const ticket = String(t.ticket || '').trim();
-  if (ticket && !/^P\d+$/i.test(ticket) && ticket !== '-') {
-    return `t:${ticket}`;
-  }
-  return [
-    'f',
-    t.openTime || '',
+  const base = [
     t.closeTime || '',
+    t.openTime || '',
     t.symbol || '',
     t.type || '',
     t.volume,
@@ -231,6 +239,10 @@ function tradeKey(t: Trade): string {
     t.commission,
     t.swap,
   ].join('|');
+  if (ticket && !/^P\d+$/i.test(ticket) && ticket !== '-') {
+    return `t:${ticket}|${base}`;
+  }
+  return `f|${base}`;
 }
 
 /**
@@ -724,11 +736,12 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
     }));
   },
 
-  uploadHistory: async (id, parsedTrades) => {
+  uploadHistory: async (id, parsedTrades, capitalMovesFromFile) => {
     let updatedAccount: TradingAccount | null = null;
     let mergedCount = 0;
+    let movesAdded = 0;
 
-    if (!parsedTrades?.length) {
+    if (!parsedTrades?.length && !capitalMovesFromFile?.length) {
       set((state) => ({
         notifications: [
           {
@@ -748,9 +761,45 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
     set((state) => {
       const accounts = state.accounts.map((acc) => {
         if (acc.id !== id) return acc;
-        const uniqueTrades = mergeTradeHistory(acc.trades || [], parsedTrades);
+        const uniqueTrades = mergeTradeHistory(
+          acc.trades || [],
+          parsedTrades || []
+        );
         mergedCount = uniqueTrades.length;
-        updatedAccount = applyRiskToAccount(acc, uniqueTrades, acc.initialCapital);
+
+        // Merge Balance/Credit từ MT5 report → capitalMoves (không trùng)
+        let capitalMoves = [...(acc.capitalMoves || [])];
+        if (capitalMovesFromFile?.length) {
+          const existing = new Set(
+            capitalMoves.map(
+              (m) => `${m.type}|${m.amount}|${m.date}|${m.note || ''}`
+            )
+          );
+          capitalMovesFromFile.forEach((m) => {
+            const amt = Math.abs(Number(m.amount) || 0);
+            if (amt <= 0) return;
+            const date = String(m.date || '').slice(0, 10);
+            const key = `${m.type}|${amt}|${date}|${m.note || ''}`;
+            if (existing.has(key)) return;
+            existing.add(key);
+            capitalMoves.push({
+              id: `cm_file_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              type: m.type === 'withdrawal' ? 'withdrawal' : 'deposit',
+              amount: amt,
+              date: date || new Date().toISOString().slice(0, 10),
+              note: m.note || 'Từ file MT5',
+              createdAt: new Date().toISOString(),
+            });
+            movesAdded += 1;
+          });
+        }
+
+        const next = { ...acc, capitalMoves };
+        updatedAccount = applyRiskToAccount(
+          next,
+          uniqueTrades,
+          next.initialCapital
+        );
         return updatedAccount!;
       });
       return { accounts };
@@ -768,11 +817,23 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
     const net = Math.round(
       parsedTrades.reduce((sum, t) => sum + t.profit + t.commission + t.swap, 0) * 100
     ) / 100;
+    const cur = targetAcc?.currency || 'USD';
+    const eq = targetAcc?.currentEquity ?? 0;
+    const cumPnL = targetAcc?.stats?.netProfit ?? 0;
+    const mon = (n: number) =>
+      cur === 'USC'
+        ? `${Math.round(n).toLocaleString()} USC (≈ $${(n / 100).toFixed(2)})`
+        : `$${Number(n).toLocaleString()}`;
     const newNotification = {
       id: Date.now().toString(),
       accountId: id,
       type: 'info' as const,
-      message: `Upload OK · +${parsedTrades.length} lệnh file · tổng ${mergedCount} lệnh · PnL file ${net >= 0 ? '+' : ''}${net} (TK ${id})`,
+      message:
+        `Upload OK · file ${parsedTrades?.length || 0} lệnh · tổng ${mergedCount}` +
+        (movesAdded ? ` · +${movesAdded} nạp/rút` : '') +
+        ` · PnL file ${net >= 0 ? '+' : ''}${mon(net)} · ` +
+        `PnL cộng dồn ${cumPnL >= 0 ? '+' : ''}${mon(cumPnL)} · ` +
+        `Equity ${mon(eq)} (= vốn + lãi + nạp/rút)`,
       time: 'Vừa xong',
       read: false,
     };
@@ -895,8 +956,23 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
               ? Math.max(1, Number(updatedData.leverage) || 1)
               : acc.leverage,
           capitalMoves,
+          // openPositions giữ nguyên giá/lot (không scale — là giá thị trường)
           openPositions: acc.openPositions || [],
         };
+
+        // Validate owner nếu đổi
+        if (
+          updatedData.ownerName !== undefined &&
+          merged.ownerName &&
+          !get().owners.some(
+            (o) =>
+              normalizeOwnerKeyLocal(o.name) ===
+              normalizeOwnerKeyLocal(merged.ownerName)
+          )
+        ) {
+          // giữ owner cũ nếu tên không trong registry
+          merged.ownerName = acc.ownerName;
+        }
 
         updatedAccount = applyRiskToAccount(merged, trades, init);
         return updatedAccount!;
@@ -979,10 +1055,12 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
           id: `cm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           createdAt: new Date().toISOString(),
         };
-        updated = refreshEquity({
+        const next = {
           ...acc,
           capitalMoves: [...(acc.capitalMoves || []), entry],
-        });
+        };
+        // Equity + stats/risk (DD/ROI) theo capital moves
+        updated = applyRiskToAccount(next, next.trades || [], next.initialCapital);
         return updated;
       });
       return {
@@ -992,7 +1070,7 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
             id: Date.now().toString(),
             accountId: id,
             type: 'info' as const,
-            message: `${move.type === 'deposit' ? 'Nạp' : 'Rút'} ${amount} — equity đã cập nhật.`,
+            message: `${move.type === 'deposit' ? 'Nạp' : 'Rút'} ${amount} — equity + risk đã cập nhật.`,
             time: 'Vừa xong',
             read: false,
           },
@@ -1014,10 +1092,11 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
     set((state) => {
       const accounts = state.accounts.map((acc) => {
         if (acc.id !== id) return acc;
-        updated = refreshEquity({
+        const next = {
           ...acc,
           capitalMoves: (acc.capitalMoves || []).filter((m) => m.id !== moveId),
-        });
+        };
+        updated = applyRiskToAccount(next, next.trades || [], next.initialCapital);
         return updated;
       });
       return { accounts };

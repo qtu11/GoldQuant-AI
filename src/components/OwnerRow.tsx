@@ -64,11 +64,12 @@ export default function OwnerRow({
     0
   );
   const totalProfitUsd = accounts.reduce((sum, a) => {
+    if (period === 'all') {
+      return sum + toUsd(a.stats.netProfit, a.currency);
+    }
+    // Period: chỉ PnL lệnh trong kỳ (không trộn capital moves full life)
     const ft = filterTradesByPeriod(a.trades || [], period);
-    const st =
-      period === 'all'
-        ? a.stats
-        : calculateStats(ft, a.initialCapital, a.capitalMoves || []);
+    const st = calculateStats(ft, a.initialCapital, []);
     return sum + toUsd(st.netProfit, a.currency);
   }, 0);
   const isProfitPositive = totalProfitUsd >= 0;

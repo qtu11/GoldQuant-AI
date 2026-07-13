@@ -1,6 +1,12 @@
 import type { OwnerProfile, TradingAccount } from '../store/useTradingStore';
 import { toUsd } from './currency';
-import { calculateStats, filterTradesByPeriod } from './analytics';
+import {
+  calculateStats,
+  equityAtCutoff,
+  filterCapitalMovesByPeriod,
+  filterTradesByPeriod,
+  periodCutoffMs,
+} from './analytics';
 import { totalFloatingPnl } from './capitalEquity';
 
 /** Key nội bộ cho TK chưa gán chủ */
@@ -140,10 +146,20 @@ export function groupAccountsByOwner(
         UNASSIGNED_OWNER_LABEL;
 
     const periodStats = accs.map((a) => {
-      const ft = filterTradesByPeriod(a.trades || [], period);
+      const allTrades = a.trades || [];
+      const allMoves = a.capitalMoves || [];
+      const ft = filterTradesByPeriod(allTrades, period);
+      const cutoff = periodCutoffMs(allTrades, period);
+      // Period ≠ all: vốn khởi đầu = equity tại cutoff; chỉ moves trong kỳ
+      const startCap =
+        cutoff == null
+          ? a.initialCapital
+          : equityAtCutoff(allTrades, a.initialCapital, allMoves, cutoff);
+      const movesInPeriod =
+        cutoff == null ? allMoves : filterCapitalMovesByPeriod(allMoves, cutoff);
       return {
         acc: a,
-        stats: calculateStats(ft, a.initialCapital, a.capitalMoves || []),
+        stats: calculateStats(ft, startCap, movesInPeriod),
       };
     });
 

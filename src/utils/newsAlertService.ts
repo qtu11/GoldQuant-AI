@@ -76,12 +76,41 @@ const LIVE_MAX = 25;
 const DIGEST_MAX_MIN = 48 * 60;
 
 const FORCE_REFRESH_MS = 45 * 60 * 1000;
+/** Tối thiểu giữa 2 lần gửi Telegram (chống spam poll) */
+const TG_MIN_INTERVAL_MS = 3 * 60 * 1000; // 3 phút
+const TG_RATE_FILE = path.join(DISK_DIR, 'telegram-rate.json');
 
 interface SentStore {
   /** app::eventId::phase | tg::eventId::phase | digest::eventId */
   keys: string[];
   weekKey: string;
   updatedAt: string;
+}
+
+function canSendTelegramNow(): boolean {
+  try {
+    if (!fs.existsSync(TG_RATE_FILE)) return true;
+    const j = JSON.parse(fs.readFileSync(TG_RATE_FILE, 'utf8')) as {
+      lastAt?: number;
+    };
+    const last = Number(j.lastAt) || 0;
+    return Date.now() - last >= TG_MIN_INTERVAL_MS;
+  } catch {
+    return true;
+  }
+}
+
+function markTelegramSentNow() {
+  try {
+    if (!fs.existsSync(DISK_DIR)) fs.mkdirSync(DISK_DIR, { recursive: true });
+    fs.writeFileSync(
+      TG_RATE_FILE,
+      JSON.stringify({ lastAt: Date.now() }),
+      'utf8'
+    );
+  } catch {
+    /* ignore */
+  }
 }
 
 function readSent(weekKey: string): Set<string> {
@@ -388,14 +417,31 @@ async function loadFullWeek(opts?: {
 }): Promise<{ snap: CalendarSnapshot; weekRollover: boolean }> {
   const keyNow = currentWeekKeyVn();
   const meta = readLastFetchMeta();
-  const weekRollover = !!(meta?.weekKey && meta.weekKey !== keyNow);
+  const weekRollover = !meta?.weekKey || meta.weekKey !== keyNow;
+  // Đổi tuần / chưa có meta / cache > 45p → force FF thisweek
   const stale =
     !meta?.at || Date.now() - meta.at > FORCE_REFRESH_MS || weekRollover;
   const force = !!opts?.force || stale || weekRollover;
 
-  const snap = await fetchForexFactoryWeek(force);
-  writeLastFetchMeta(snap.weekKey || keyNow);
-  return { snap, weekRollover };
+  let snap = await fetchForexFactoryWeek(force);
+
+  // Double-check: snapshot vẫn weekKey cũ → force lần 2
+  if (snap.weekKey && snap.weekKey !== keyNow) {
+    snap = await fetchForexFactoryWeek(true);
+  }
+  // Stamp meta theo tuần hiện tại (không theo stamp cũ)
+  writeLastFetchMeta(keyNow);
+
+  // Gắn weekKey đúng tuần app (Monday VN)
+  if (!snap.weekKey || snap.weekKey !== keyNow) {
+    snap = {
+      ...snap,
+      weekKey: keyNow,
+      weekLabel: snap.weekLabel || keyNow,
+    };
+  }
+
+  return { snap, weekRollover: weekRollover && !!meta?.weekKey };
 }
 
 /**
@@ -461,18 +507,23 @@ export async function runNewsAlertCheck(opts?: {
       justDigest.push(a);
     });
 
-    // 3) Telegram độc lập
+    // 3) Telegram — CHỈ 1 lần / sự kiện / phase (kể cả fail → không spam retry)
     if (pendingTg.length && telegramConfigured) {
-      const msg = formatNewsAlertTelegram(pendingTg);
-      telegramOk = await sendTelegramServer(msg);
-      if (telegramOk) {
+      if (!canSendTelegramNow()) {
+        // Rate-limit: giữ pendingTg chưa mark — lần poll sau (sau 3p) gửi gộp
+        // Không mark → vẫn có thể gửi, nhưng không flood mỗi 60s
+      } else {
+        const msg = formatNewsAlertTelegram(pendingTg);
+        telegramOk = await sendTelegramServer(msg);
+        markTelegramSentNow();
+        // QUAN TRỌNG: mark sau MỌI attempt (OK hoặc fail)
+        // Fail trước đây không mark → poll 60s spam cả giờ trong cửa sổ 5h/LIVE
         pendingTg.forEach((a) => {
           keys.add(tgKey(a.eventId, a.phase));
-          telegramSent.push(a);
+          if (telegramOk) telegramSent.push(a);
         });
       }
     } else if (pendingTg.length && !telegramConfigured) {
-      // Không có TG: đánh dấu tg key để không retry vô hạn; in-app đã cover
       pendingTg.forEach((a) => keys.add(tgKey(a.eventId, a.phase)));
     }
 
@@ -488,7 +539,7 @@ export async function runNewsAlertCheck(opts?: {
     checkedAt: new Date().toISOString(),
     sent,
     telegramSent: dryRun ? [] : telegramSent,
-    pending: dryRun ? pendingApp : pendingApp.filter((a) => !justInApp.includes(a)),
+    pending: dryRun ? pendingApp : [],
     digest: dryRun ? digestReady : justDigest,
     upcomingMajors,
     weekEventCount: allEvents.length,

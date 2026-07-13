@@ -17,6 +17,19 @@ export interface Trade {
   session: 'Asia' | 'Europe' | 'US';
 }
 
+/** Nạp/rút parse từ dòng Balance/Credit MT5 (chưa có id — store gán) */
+export interface ParsedCapitalMove {
+  type: 'deposit' | 'withdrawal';
+  amount: number;
+  date: string;
+  note?: string;
+}
+
+export interface ParseResult {
+  trades: Trade[];
+  capitalMoves: ParsedCapitalMove[];
+}
+
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
@@ -531,11 +544,12 @@ function parseDealsRows(
   rows: (string | number)[][],
   headerIdx: number,
   headers: string[]
-): Trade[] {
+): { trades: Trade[]; capitalMoves: ParsedCapitalMove[] } {
   const map = buildDealsMap(headers);
   const longStack: OpenDeal[] = [];
   const shortStack: OpenDeal[] = [];
   const trades: Trade[] = [];
+  const capitalMoves: ParsedCapitalMove[] = [];
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i];
@@ -544,7 +558,34 @@ function parseDealsRows(
     if (isHeaderRow(row)) break;
 
     const typeRaw = String(row[map.type] ?? '').trim().toLowerCase();
-    if (typeRaw === 'balance' || typeRaw === 'credit') continue;
+    // Balance / Credit / Deposit / Withdrawal → capital moves (không bỏ)
+    if (
+      typeRaw === 'balance' ||
+      typeRaw === 'credit' ||
+      typeRaw.includes('deposit') ||
+      typeRaw.includes('withdraw') ||
+      typeRaw === 'nạp' ||
+      typeRaw === 'rút'
+    ) {
+      const time = normalizeTime(row[map.time]);
+      const profit = safeFloat(row[map.profit]);
+      const amt = Math.abs(profit);
+      if (amt > 0 && isTimeLike(time)) {
+        const comment =
+          map.comment >= 0 ? String(row[map.comment] ?? '').trim() : '';
+        const isWd =
+          typeRaw.includes('withdraw') ||
+          typeRaw === 'rút' ||
+          profit < 0;
+        capitalMoves.push({
+          type: isWd ? 'withdrawal' : 'deposit',
+          amount: amt,
+          date: time.slice(0, 10).replace(/\./g, '-'),
+          note: comment || typeRaw,
+        });
+      }
+      continue;
+    }
     if (!isBuySell(typeRaw)) continue;
 
     const dirRaw = String(row[map.dir] ?? '').trim().toLowerCase();
@@ -735,18 +776,19 @@ function parseDealsRows(
     }
   }
 
-  return trades;
+  return { trades, capitalMoves };
 }
 
 // ─────────────────────────────────────────────
 // Unified sheet/table parse
 // ─────────────────────────────────────────────
 
-function parseTableMatrix(rows: (string | number)[][]): Trade[] {
-  if (!rows?.length) return [];
+function parseTableMatrix(rows: (string | number)[][]): ParseResult {
+  if (!rows?.length) return { trades: [], capitalMoves: [] };
 
   let positions: Trade[] = [];
   let deals: Trade[] = [];
+  let capitalMoves: ParsedCapitalMove[] = [];
 
   let i = 0;
   while (i < rows.length) {
@@ -760,38 +802,45 @@ function parseTableMatrix(rows: (string | number)[][]): Trade[] {
     if (kind === 'positions') {
       const t = parsePositionsRows(rows, i, headers);
       if (t.length > positions.length) positions = t;
-      // nhảy qua block
       i++;
       while (i < rows.length && !isSectionTitle(rows[i]) && !isHeaderRow(rows[i])) i++;
       continue;
     }
 
     if (kind === 'deals') {
-      const t = parseDealsRows(rows, i, headers);
-      if (t.length > deals.length) deals = t;
+      const d = parseDealsRows(rows, i, headers);
+      if (d.trades.length > deals.length) {
+        deals = d.trades;
+        // Ưu tiên capital moves từ block deals lớn hơn
+        if (d.capitalMoves.length >= capitalMoves.length) {
+          capitalMoves = d.capitalMoves;
+        }
+      } else if (d.capitalMoves.length > capitalMoves.length) {
+        capitalMoves = d.capitalMoves;
+      }
       i++;
       while (i < rows.length && !isSectionTitle(rows[i]) && !isHeaderRow(rows[i])) i++;
       continue;
     }
 
-    // orders / unknown — skip block
     i++;
     while (i < rows.length && !isSectionTitle(rows[i]) && !isHeaderRow(rows[i])) i++;
   }
 
-  // Ưu tiên Positions (đủ open/close). Fallback Deals đã ghép.
-  if (positions.length > 0) return sortTrades(positions);
-  return sortTrades(deals);
+  // Positions ưu tiên cho trades; capital moves luôn từ deals nếu có
+  const trades =
+    positions.length > 0 ? sortTrades(positions) : sortTrades(deals);
+  return { trades, capitalMoves };
 }
 
 // ─────────────────────────────────────────────
 // Excel
 // ─────────────────────────────────────────────
 
-export function parseExcel(buffer: ArrayBuffer): Trade[] {
+export function parseExcel(buffer: ArrayBuffer): ParseResult {
   try {
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-    let best: Trade[] = [];
+    let best: ParseResult = { trades: [], capitalMoves: [] };
 
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName];
@@ -800,13 +849,19 @@ export function parseExcel(buffer: ArrayBuffer): Trade[] {
         raw: true,
         defval: '',
       }) as (string | number)[][];
-      const trades = parseTableMatrix(data);
-      if (trades.length > best.length) best = trades;
+      const parsed = parseTableMatrix(data);
+      if (
+        parsed.trades.length > best.trades.length ||
+        (parsed.trades.length === best.trades.length &&
+          parsed.capitalMoves.length > best.capitalMoves.length)
+      ) {
+        best = parsed;
+      }
     }
     return best;
   } catch (err) {
     console.error('Excel parsing error:', err);
-    return [];
+    return { trades: [], capitalMoves: [] };
   }
 }
 
@@ -845,11 +900,11 @@ function parseCSVLine(line: string, delimiter: string): string[] {
   return result.map((c) => c.trim());
 }
 
-export function parseCSV(csvText: string): Trade[] {
-  if (!csvText?.trim()) return [];
+export function parseCSV(csvText: string): ParseResult {
+  if (!csvText?.trim()) return { trades: [], capitalMoves: [] };
   const delimiter = detectDelimiter(csvText);
   const lines = csvText.split(/\r?\n/).filter((l) => l.trim() !== '');
-  if (lines.length < 2) return [];
+  if (lines.length < 2) return { trades: [], capitalMoves: [] };
   const rows = lines.map((l) => parseCSVLine(l, delimiter));
   return parseTableMatrix(rows);
 }
@@ -896,18 +951,25 @@ function htmlTablesToMatrices(html: string): (string | number)[][][] {
   return tables;
 }
 
-export function parseHTML(htmlText: string): Trade[] {
-  if (!htmlText?.trim()) return [];
+export function parseHTML(htmlText: string): ParseResult {
+  if (!htmlText?.trim()) return { trades: [], capitalMoves: [] };
   try {
-    let best: Trade[] = [];
+    let best: ParseResult = { trades: [], capitalMoves: [] };
+    const pick = (p: ParseResult) => {
+      if (
+        p.trades.length > best.trades.length ||
+        (p.trades.length === best.trades.length &&
+          p.capitalMoves.length > best.capitalMoves.length)
+      ) {
+        best = p;
+      }
+    };
     const matrices = htmlTablesToMatrices(htmlText);
     for (const matrix of matrices) {
-      const trades = parseTableMatrix(matrix);
-      if (trades.length > best.length) best = trades;
+      pick(parseTableMatrix(matrix));
     }
-    if (best.length) return best;
+    if (best.trades.length) return best;
 
-    // DOMParser fallback (browser)
     if (typeof DOMParser !== 'undefined') {
       const doc = new DOMParser().parseFromString(htmlText, 'text/html');
       const tables = doc.querySelectorAll('table');
@@ -919,14 +981,13 @@ export function parseHTML(htmlText: string): Trade[] {
           );
           if (cells.length) rows.push(cells);
         });
-        const trades = parseTableMatrix(rows);
-        if (trades.length > best.length) best = trades;
+        pick(parseTableMatrix(rows));
       }
     }
     return best;
   } catch (err) {
     console.error('HTML parsing error:', err);
-    return [];
+    return { trades: [], capitalMoves: [] };
   }
 }
 
@@ -984,14 +1045,14 @@ function isHTMLContent(text: string): boolean {
 }
 
 /**
- * Parse file content.
- * - Excel: truyền ArrayBuffer
- * - HTML/CSV/TXT: string hoặc ArrayBuffer (tự detect UTF-16)
+ * Parse file content → trades + capitalMoves (Balance/Credit).
+ * - Excel: ArrayBuffer
+ * - HTML/CSV/TXT: string hoặc ArrayBuffer (UTF-16 OK)
  */
 export async function parseFile(
   content: string | ArrayBuffer,
   fileType: SupportedFileType
-): Promise<Trade[]> {
+): Promise<ParseResult> {
   if (fileType === 'excel') {
     const buf =
       content instanceof ArrayBuffer
@@ -1004,13 +1065,13 @@ export async function parseFile(
     typeof content === 'string' ? content : decodeTextBuffer(content);
 
   if (fileType === 'html' || isHTMLContent(text)) {
-    const htmlTrades = parseHTML(text);
-    if (htmlTrades.length > 0) return htmlTrades;
+    const html = parseHTML(text);
+    if (html.trades.length > 0 || html.capitalMoves.length > 0) return html;
   }
 
   if (isHTMLContent(text)) {
-    const htmlTrades = parseHTML(text);
-    if (htmlTrades.length > 0) return htmlTrades;
+    const html = parseHTML(text);
+    if (html.trades.length > 0 || html.capitalMoves.length > 0) return html;
   }
 
   return parseCSV(text);

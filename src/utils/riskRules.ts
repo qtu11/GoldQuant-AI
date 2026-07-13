@@ -148,7 +148,11 @@ export function formatBreachesForTelegram(breaches: RuleBreach[]): string {
   return `🛡 <b>[GoldQuant] Risk Rules Breach</b>\n${lines.join('\n\n')}`;
 }
 
-/** Fingerprint ổn định cho anti-spam Telegram (AppLayout + Tools) */
+/**
+ * Fingerprint anti-spam: 1 rule / TK / ngày.
+ * Không gắn value (risk score/DD lẻ 6.7→6.8 sẽ spam nếu gắn value).
+ */
 export function breachKey(b: RuleBreach): string {
-  return `${b.accountId}:${b.rule}:${Math.round(b.value * 10)}`;
+  const day = new Date().toISOString().slice(0, 10);
+  return `${b.accountId}:${b.rule}:${day}`;
 }

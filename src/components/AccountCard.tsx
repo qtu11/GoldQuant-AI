@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { TradingAccount } from '../store/useTradingStore';
-import { toUsd } from '../utils/currency';
+import { formatMoneyDual, toUsd } from '../utils/currency';
 import { calculateRiskScore } from '../utils/analytics';
 import { displayOwnerName, isUnassignedOwner } from '../utils/ownerStats';
 import {
@@ -78,15 +78,10 @@ export default function AccountCard({
   const StatusIcon =
     status === 'Healthy' ? CheckCircle2 : status === 'Moderate' ? AlertTriangle : XOctagon;
 
-  const equityMain = isCent
-    ? `${Math.round(currentEquity).toLocaleString()} USC`
-    : `$${Math.round(currentEquity).toLocaleString()}`;
-
-  const profitMain = `${isProfitPositive ? '+' : ''}${
-    isCent
-      ? Math.round(stats.netProfit).toLocaleString()
-      : `$${Math.round(stats.netProfit).toLocaleString()}`
-  }`;
+  const equityDual = formatMoneyDual(currentEquity, currency);
+  const profitDual = formatMoneyDual(stats.netProfit, currency, { signed: true });
+  const equityMain = equityDual.primary;
+  const profitMain = profitDual.primary;
 
   return (
     <article
@@ -154,11 +149,13 @@ export default function AccountCard({
           <div className={styles.metricLabel}>Equity</div>
           <div className={styles.metricValue}>{equityMain}</div>
           {isCent ? (
-            <div className={styles.metricSub}>≈ ${Math.round(equityUsd).toLocaleString()}</div>
+            <div className={styles.metricSub} title="100 USC = 1 USD">
+              {equityDual.secondary}
+            </div>
           ) : null}
         </div>
         <div>
-          <div className={styles.metricLabel}>Profit</div>
+          <div className={styles.metricLabel}>Profit (cộng dồn)</div>
           <div
             className={`${styles.metricValue} ${isProfitPositive ? styles.profitPos : styles.profitNeg}`}
           >
@@ -166,7 +163,7 @@ export default function AccountCard({
           </div>
           {isCent ? (
             <div className={`${styles.metricSub} ${isProfitPositive ? styles.subPos : styles.subNeg}`}>
-              ≈ ${Math.round(profitUsd).toLocaleString()}
+              {profitDual.secondary}
             </div>
           ) : null}
         </div>

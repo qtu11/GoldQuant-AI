@@ -178,8 +178,8 @@ export function shiftRawToCurrentWeek(raw: FfRaw[]): FfRaw[] {
 
 /**
  * Cache còn thuộc tuần hiện tại?
- * - weekKey khớp Monday VN, hoặc
- * - ≥1 sự kiện nằm trong [Mon VN − 12h, Mon+7d + 12h]
+ * - Có weekKey → BẮT BUỘC khớp Monday VN (đổi tuần = invalidate)
+ * - Không weekKey (legacy) → ≥50% event nằm trong tuần VN hiện tại
  */
 function isCurrentWeekEvents(
   events: CalendarEvent[],
@@ -187,16 +187,33 @@ function isCurrentWeekEvents(
 ): boolean {
   if (!events.length) return false;
   const keyNow = currentWeekKeyVn();
-  if (weekKey && weekKey === keyNow) return true;
+
+  // weekKey lệch tuần → luôn false (không tin overlap biên tuần)
+  if (weekKey) return weekKey === keyNow;
 
   const mon = mondayVnWeekStartMs();
   const next = mon + 7 * 86400000;
-  const lo = mon - 12 * 3600000;
-  const hi = next + 12 * 3600000;
-  return events.some((e) => {
+  const lo = mon - 6 * 3600000;
+  const hi = next + 6 * 3600000;
+  let inWeek = 0;
+  events.forEach((e) => {
     const t = e.timeMs || parseFfDate(e.date) || Date.parse(e.date);
-    return Number.isFinite(t) && t >= lo && t <= hi;
+    if (Number.isFinite(t) && t >= lo && t <= hi) inWeek += 1;
   });
+  return inWeek >= Math.max(1, Math.ceil(events.length * 0.5));
+}
+
+/** Xóa mem + disk khi sang tuần mới */
+function invalidateWeekCache(reason: string) {
+  mem = null;
+  try {
+    if (fs.existsSync(DISK_FILE)) fs.unlinkSync(DISK_FILE);
+  } catch {
+    /* ignore */
+  }
+  if (typeof console !== 'undefined') {
+    console.info(`[calendar] invalidate week cache: ${reason}`);
+  }
 }
 
 function normalizeImpact(raw: string): NewsImpact {
@@ -339,13 +356,20 @@ function readDisk(): CalendarSnapshot | null {
       at: number;
     };
     if (!j?.snap?.events?.length) return null;
-    // Tuần cũ (weekKey khác Monday VN) → bỏ disk, buộc fetch tuần mới
-    if (!isCurrentWeekEvents(j.snap.events, j.snap.weekKey)) return null;
+    // Tuần cũ → xóa file + null (không serve data tuần trước)
+    if (!isCurrentWeekEvents(j.snap.events, j.snap.weekKey)) {
+      try {
+        fs.unlinkSync(DISK_FILE);
+      } catch {
+        /* ignore */
+      }
+      return null;
+    }
     saveMem(j.snap, j.at);
     return wrap(j.snap.events, j.snap.source, {
       fromCache: true,
       fetchedAt: j.snap.fetchedAt,
-      weekKey: j.snap.weekKey,
+      weekKey: j.snap.weekKey || currentWeekKeyVn(),
       warning: `Disk cache tuần ${j.snap.weekKey || weekLabelVn()} — full ${j.snap.events.length} sự kiện.`,
     });
   } catch {
@@ -474,6 +498,11 @@ async function networkFetch(): Promise<CalendarSnapshot> {
 /**
  * Public — NEVER throws.
  * @param force true → bỏ cache tươi, gọi FF lấy full tuần mới (week rollover / cron)
+ *
+ * Đảm bảo theo tuần:
+ * - weekKey = Monday VN (YYYY-MM-DD)
+ * - Đổi tuần → invalidate mem/disk → force FF thisweek
+ * - Snapshot luôn stamp weekKey hiện tại
  */
 export async function fetchForexFactoryWeek(
   force = false
@@ -483,47 +512,58 @@ export async function fetchForexFactoryWeek(
 
   if (!mem) readDisk();
 
-  // Mem tuần cũ → xoá (tự cập nhật tin tuần mới)
-  if (mem && !isCurrentWeekEvents(mem.snap.events, mem.snap.weekKey)) {
-    mem = null;
-  }
-  if (mem?.snap?.weekKey && mem.snap.weekKey !== keyNow) {
-    mem = null;
+  // —— WEEK ROLLOVER: mem/disk tuần cũ → xóa sạch, bắt buộc fetch mới ——
+  const memStaleWeek =
+    !!mem &&
+    (!isCurrentWeekEvents(mem.snap.events, mem.snap.weekKey) ||
+      (mem.snap.weekKey != null && mem.snap.weekKey !== keyNow));
+  if (memStaleWeek) {
+    invalidateWeekCache(
+      `weekKey ${mem?.snap?.weekKey || '?'} → ${keyNow}`
+    );
+    force = true;
   }
 
   // Force: luôn network (trừ đang 429 block)
   if (force && now >= blockedUntil) {
     try {
       const snap = await networkFetch();
-      saveMem(snap);
-      writeDisk(snap);
-      return wrap(snap.events, snap.source, {
-        fetchedAt: snap.fetchedAt,
-        weekKey: snap.weekKey || keyNow,
-        warning: `Force refresh full tuần · ${snap.events.length} sự kiện.`,
+      // Stamp week hiện tại — FF thisweek = tuần live
+      const stamped = wrap(snap.events, snap.source, {
+        fetchedAt: new Date().toISOString(),
+        weekKey: keyNow,
+        weekLabel: weekLabelVn(),
+        warning: `Live full tuần ${keyNow} · ${snap.events.length} sự kiện.`,
       });
+      saveMem(stamped);
+      writeDisk(stamped);
+      return stamped;
     } catch (e) {
       const is429 = e instanceof Error && e.message === '429';
       if (is429) blockedUntil = Date.now() + BLOCK_429_MS;
-      return bestLocal({
+      // Seed shift về tuần hiện tại nếu force fail
+      const local = bestLocal({
         rateLimited: is429,
+        weekKey: keyNow,
         warning: is429
-          ? 'Force fail 429 — giữ cache/seed tuần hiện tại.'
-          : 'Force fail — giữ cache/seed tuần hiện tại.',
+          ? `Force fail 429 — seed/cache tuần ${keyNow}.`
+          : `Force fail — seed/cache tuần ${keyNow}.`,
       });
+      return local;
     }
   }
 
   if (
     mem &&
     now - mem.at < FRESH_MS &&
-    isCurrentWeekEvents(mem.snap.events, mem.snap.weekKey)
+    isCurrentWeekEvents(mem.snap.events, mem.snap.weekKey) &&
+    (mem.snap.weekKey === keyNow || !mem.snap.weekKey)
   ) {
     return wrap(mem.snap.events, mem.snap.source, {
       fromCache: true,
       fetchedAt: mem.snap.fetchedAt,
-      weekKey: mem.snap.weekKey,
-      warning: `Cache tươi full tuần (${mem.snap.events.length} SK) · countdown live.`,
+      weekKey: keyNow,
+      warning: `Cache tươi full tuần ${keyNow} (${mem.snap.events.length} SK) · countdown live.`,
     });
   }
 

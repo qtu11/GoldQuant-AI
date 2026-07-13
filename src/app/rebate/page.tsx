@@ -1,14 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Calculator, DollarSign, RefreshCw, Award, Info } from 'lucide-react';
+import { Calculator, DollarSign, Award, Info } from 'lucide-react';
 
 export default function RebateCalculatorPage() {
-  const [broker, setBroker] = useState('Exness');
-  const [accountType, setAccountType] = useState('Standard');
-  const [lots, setLots] = useState<number>(10);
-  const [rebateRate, setRebateRate] = useState<number>(3.5); // USD per Lot
-
   // Các cấu hình broker mẫu
   const brokerPresets: Record<string, Record<string, number>> = {
     'Exness': {
@@ -25,6 +20,12 @@ export default function RebateCalculatorPage() {
       'Ultra Low': 2.0,
     }
   };
+
+  // Khởi tạo khớp key thật trong presets (tránh accountType 'Standard' không tồn tại)
+  const [broker, setBroker] = useState('Exness');
+  const [accountType, setAccountType] = useState('Standard (XAUUSD)');
+  const [lots, setLots] = useState<number>(10);
+  const [rebateRate, setRebateRate] = useState<number>(3.5); // USD per Lot
 
   const handleBrokerChange = (e: string) => {
     setBroker(e);
@@ -56,9 +57,9 @@ export default function RebateCalculatorPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Calculator Form */}
-        <div className="lg:col-span-1 bg-dark-card border border-dark-border rounded-xl p-5 space-y-4">
-          <div className="flex items-center gap-2 mb-2 pb-3 border-b border-dark-border/40">
-            <Calculator className="w-5 h-5 text-gold" />
+        <div className="lg:col-span-1 neon-card-premium p-5 space-y-4 kpi-purple">
+          <div className="flex items-center gap-2 mb-2 pb-3 border-b border-dark-border">
+            <div className="icon-tile icon-tile-purple"><Calculator className="w-4 h-4" /></div>
             <h4 className="text-sm font-bold text-white uppercase tracking-wider">Thông Số Tính Phí</h4>
           </div>
 
@@ -123,53 +124,49 @@ export default function RebateCalculatorPage() {
         {/* Results display */}
         <div className="lg:col-span-2 space-y-6">
           {/* Main big display */}
-          <div className="bg-dark-card border border-dark-border rounded-xl p-6 flex items-center justify-between gold-glow">
+          <div className="neon-card-premium p-6 flex items-center justify-between kpi-yellow">
             <div className="space-y-1">
               <span className="text-xs font-bold text-dark-text-muted uppercase tracking-wider block">Ước tính Rebate hàng tháng</span>
-              <span className="text-4xl font-black text-gold font-mono leading-none block">
+              <span className="text-4xl font-black neon-gradient-text font-mono leading-none block">
                 ${monthlyRebate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
               <span className="text-[11px] text-dark-text-muted block mt-1">
-                Dựa trên {lots} lots giao dịch hàng ngày với tỷ lệ hoàn trả ${rebateRate}/lot.
+                {lots} lots/ngày · ${rebateRate}/lot
               </span>
             </div>
-            <div className="p-4 bg-gold/10 rounded-2xl text-gold hidden sm:block">
+            <div className="p-4 rounded-2xl icon-tile-yellow hidden sm:block shadow-[0_0_24px_rgba(245,197,24,0.25)]">
               <Award className="w-10 h-10" />
             </div>
           </div>
 
-          {/* Breakdown cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Daily */}
-            <div className="bg-dark-card border border-dark-border rounded-xl p-4 flex flex-col justify-between">
-              <span className="text-[10px] font-bold text-dark-text-muted uppercase tracking-wider block">Hàng Ngày (1 ngày)</span>
+            <div className="neon-card-premium p-4 flex flex-col justify-between kpi-cyan">
+              <span className="text-[10px] font-bold text-dark-text-muted uppercase tracking-wider block">Hàng Ngày</span>
               <div className="mt-4">
-                <span className="text-2xl font-black text-white font-mono leading-none block">
+                <span className="text-2xl font-black text-neon-cyan font-mono leading-none block">
                   ${dailyRebate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
-                <span className="text-[10px] text-dark-text-muted mt-1 block">Tương đương {lots} lots</span>
+                <span className="text-[10px] text-dark-text-muted mt-1 block">{lots} lots</span>
               </div>
             </div>
 
-            {/* Weekly */}
-            <div className="bg-dark-card border border-dark-border rounded-xl p-4 flex flex-col justify-between">
-              <span className="text-[10px] font-bold text-dark-text-muted uppercase tracking-wider block">Hàng Tuần (5 ngày)</span>
+            <div className="neon-card-premium p-4 flex flex-col justify-between kpi-pink">
+              <span className="text-[10px] font-bold text-dark-text-muted uppercase tracking-wider block">Hàng Tuần (5d)</span>
               <div className="mt-4">
-                <span className="text-2xl font-black text-white font-mono leading-none block">
+                <span className="text-2xl font-black text-neon-pink font-mono leading-none block">
                   ${weeklyRebate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
-                <span className="text-[10px] text-dark-text-muted mt-1 block">Tương đương {lots * 5} lots</span>
+                <span className="text-[10px] text-dark-text-muted mt-1 block">{lots * 5} lots</span>
               </div>
             </div>
 
-            {/* Yearly */}
-            <div className="bg-dark-card border border-dark-border rounded-xl p-4 flex flex-col justify-between">
-              <span className="text-[10px] font-bold text-dark-text-muted uppercase tracking-wider block">Hàng Năm (252 ngày)</span>
+            <div className="neon-card-premium p-4 flex flex-col justify-between kpi-blue">
+              <span className="text-[10px] font-bold text-dark-text-muted uppercase tracking-wider block">Hàng Năm (252d)</span>
               <div className="mt-4">
-                <span className="text-2xl font-black text-white font-mono leading-none block">
+                <span className="text-2xl font-black text-neon-blue font-mono leading-none block">
                   ${yearlyRebate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
-                <span className="text-[10px] text-dark-text-muted mt-1 block">Tương đương {lots * 252} lots</span>
+                <span className="text-[10px] text-dark-text-muted mt-1 block">{lots * 252} lots</span>
               </div>
             </div>
           </div>

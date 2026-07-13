@@ -1,0 +1,191 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+enum AccountStatus {
+  HEALTHY
+  WARNING
+  CRITICAL
+  STALE
+}
+
+enum ConnectionType {
+  METAAPI
+  EA_WEBHOOK
+  PYTHON_BRIDGE
+  CSV_IMPORT
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String
+  name          String?
+  twoFactorSec  String?        // TOTP Secret
+  is2FAEnabled  Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?      // Soft delete
+  organizations OrgMember[]
+  accounts      AccountLink[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+}
+
+model Organization {
+  id        String       @id @default(uuid())
+  name      String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  members   OrgMember[]
+  strategies Strategy[]
+}
+
+model OrgMember {
+  id             String       @id @default(uuid())
+  orgId          String
+  userId         String
+  role           Role         @default(VIEWER)
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+}
+
+model Strategy {
+  id             String       @id @default(uuid())
+  name           String       // E.g., "Gold Scalper", "FOMO Challenge"
+  description    String?
+  orgId          String
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  accounts       Mt5Account[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Mt5Account {
+  id             String         @id @default(uuid())
+  name           String         // Tên gợi nhớ
+  login          String         // Số tài khoản MT5
+  server         String         // Broker server
+  passwordEnc    String         // Mật khẩu mã hóa (AES-256)
+  connectionType ConnectionType @default(METAAPI)
+  metaApiId      String?        // ID trên MetaAPI
+  status         AccountStatus  @default(HEALTHY)
+  currency       String         @default("USD")
+  leverage       Int            @default(100)
+  strategyId     String?
+  strategy       Strategy?      @relation(fields: [strategyId], references: [id], onDelete: SetNull)
+  
+  // Realtime Metrics (Snapshot)
+  balance        Decimal        @db.Decimal(18, 2)
+  equity         Decimal        @db.Decimal(18, 2)
+  profit         Decimal        @db.Decimal(18, 2)
+  margin         Decimal        @db.Decimal(18, 2)
+  freeMargin     Decimal        @db.Decimal(18, 2)
+  marginLevel    Decimal        @db.Decimal(18, 2) // Equity / Margin * 100
+  maxDrawdown    Decimal        @db.Decimal(6, 2)   // % Drawdown tối đa
+  currentDrawdown Decimal       @db.Decimal(6, 2)   // % Drawdown hiện tại
+  
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  lastSyncAt     DateTime       @default(now())
+
+  trades         Trade[]
+  equitySnapshots EquitySnapshot[]
+  accountLinks   AccountLink[]
+}
+
+model AccountLink {
+  id        String     @id @default(uuid())
+  userId    String
+  accountId String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account   Mt5Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, accountId])
+}
+
+model Trade {
+  id             String     @id @default(uuid())
+  accountId      String
+  account        Mt5Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  ticket         String     @unique // Ticket ID từ MT5
+  symbol         String     // E.g., "XAUUSD"
+  type           String     // "BUY" or "SELL"
+  lots           Decimal    @db.Decimal(10, 2)
+  openPrice      Decimal    @db.Decimal(18, 5)
+  closePrice     Decimal?   @db.Decimal(18, 5)
+  sl             Decimal?   @db.Decimal(18, 5)
+  tp             Decimal?   @db.Decimal(18, 5)
+  swap           Decimal    @db.Decimal(18, 2) @default(0)
+  commission     Decimal    @db.Decimal(18, 2) @default(0)
+  pnl            Decimal    @db.Decimal(18, 2) // Profit/Loss ròng
+  openTime       DateTime
+  closeTime      DateTime?
+  comment        String?
+  createdAt      DateTime   @default(now())
+}
+
+model EquitySnapshot {
+  id        String     @id @default(uuid())
+  accountId String
+  account   Mt5Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  equity    Decimal    @db.Decimal(18, 2)
+  balance   Decimal    @db.Decimal(18, 2)
+  margin    Decimal    @db.Decimal(18, 2)
+  timestamp DateTime   @default(now())
+
+  @@index([accountId, timestamp])
+}
+
+model PortfolioMetrics {
+  id               String   @id @default(uuid())
+  timestamp        DateTime @default(now())
+  totalEquity      Decimal  @db.Decimal(18, 2)
+  totalBalance     Decimal  @db.Decimal(18, 2)
+  totalProfit      Decimal  @db.Decimal(18, 2)
+  riskScore        Int      // 0 - 100
+  var95            Decimal  @db.Decimal(18, 2) // VaR 1-day 95%
+  var99            Decimal  @db.Decimal(18, 2) // VaR 1-day 99%
+  cvar95           Decimal  @db.Decimal(18, 2) // CVaR 1-day 95%
+  sharpeRatio      Decimal  @db.Decimal(6, 3)
+  sortinoRatio     Decimal  @db.Decimal(6, 3)
+  maxDrawdown      Decimal  @db.Decimal(6, 2)
+  correlationData  Json     // Ma trận tương quan dạng JSON
+  anomalyAlertsCount Int    @default(0)
+  
+  @@index([timestamp])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   // "INFO", "WARNING", "CRITICAL", "ANOMALY"
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String   // E.g., "CONNECT_ACCOUNT", "DECRYPT_PASSWORD", "MODIFY_RISK_RULE"
+  ipAddress String?
+  details   String?
+  createdAt DateTime @default(now())
+}

@@ -1,71 +1,270 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useTradingStore } from '../../store/useTradingStore';
-import { Bell, ShieldAlert, CheckCircle, Info, ShieldCheck } from 'lucide-react';
+import {
+  Bell,
+  ShieldAlert,
+  Info,
+  ShieldCheck,
+  Newspaper,
+  RefreshCw,
+} from 'lucide-react';
+
+function sourceLabel(accountId: string) {
+  if (accountId === 'news') return { label: 'Tin tức XAU', tone: 'text-neon-yellow' };
+  if (accountId === 'system') return { label: 'Hệ thống', tone: 'text-neon-cyan' };
+  return { label: `TK ${accountId}`, tone: 'text-gold' };
+}
 
 export default function NotificationsPage() {
-  const { notifications, markAllNotificationsRead } = useTradingStore();
+  const { notifications, markAllNotificationsRead, hydrateNotifications } =
+    useTradingStore();
 
   useEffect(() => {
-    // Tự động đánh dấu tất cả đã đọc sau khi mở trang này
-    markAllNotificationsRead();
+    hydrateNotifications();
+  }, [hydrateNotifications]);
+
+  useEffect(() => {
+    // Đánh dấu đã đọc sau khi mở trang (delay nhẹ để user thấy badge)
+    const t = window.setTimeout(() => markAllNotificationsRead(), 800);
+    return () => window.clearTimeout(t);
   }, [markAllNotificationsRead]);
 
+  const newsCount = useMemo(
+    () => notifications.filter((n) => n.accountId === 'news').length,
+    [notifications]
+  );
+
+  const pullNewsNow = async () => {
+    try {
+      const res = await fetch('/api/quant/news-alerts', { cache: 'no-store' });
+      const data = await res.json();
+      if (!data?.ok) return;
+
+      const stamp = Date.now();
+      const fresh: {
+        id: string;
+        accountId: string;
+        type: 'warning' | 'info' | 'critical';
+        message: string;
+        time: string;
+        read: boolean;
+      }[] = [];
+
+      const time = new Date().toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      (data.sent || []).forEach(
+        (
+          a: {
+            eventId: string;
+            title: string;
+            phase: string;
+            tier: string;
+            hoursUntil: number;
+            dateVn?: string;
+            date?: string;
+          },
+          i: number
+        ) => {
+          const icon =
+            a.tier === 'extreme' ? '🔴' : a.tier === 'very_high' ? '🟠' : '🟡';
+          const phase =
+            a.phase === 'pre5h'
+              ? `Còn ~${a.hoursUntil}h (trước 5h)`
+              : 'LIVE / sắp công bố';
+          fresh.push({
+            id: `news_manual_due_${stamp}_${i}_${a.eventId}`,
+            accountId: 'news',
+            type:
+              a.phase === 'live' || a.tier === 'extreme' ? 'critical' : 'warning',
+            message: `[Tin XAU ${icon}] ${a.title} · ${phase} · VN ${a.dateVn || a.date}`,
+            time,
+            read: false,
+          });
+        }
+      );
+
+      (data.digest || []).forEach(
+        (
+          a: {
+            eventId: string;
+            title: string;
+            tier: string;
+            hoursUntil: number;
+            minutesUntil: number;
+            dateVn?: string;
+            date?: string;
+            reason?: string;
+          },
+          i: number
+        ) => {
+          const icon =
+            a.tier === 'extreme' ? '🔴' : a.tier === 'very_high' ? '🟠' : '🟡';
+          const eta =
+            a.minutesUntil < 60
+              ? `${a.minutesUntil}m`
+              : `${Math.round(a.hoursUntil * 10) / 10}h`;
+          fresh.push({
+            id: `news_manual_dig_${stamp}_${i}_${a.eventId}`,
+            accountId: 'news',
+            type: 'info',
+            message: `[Lịch tin ${icon}] ${a.title} · còn ~${eta} · VN ${
+              a.dateVn || a.date
+            }${a.reason ? ` · ${a.reason}` : ''}`,
+            time,
+            read: false,
+          });
+        }
+      );
+
+      // Nếu server đã mark hết digest, vẫn show top 5 upcoming để user thấy ngay
+      if (
+        !fresh.length &&
+        Array.isArray(data.upcomingMajors) &&
+        data.upcomingMajors.length
+      ) {
+        data.upcomingMajors
+          .filter(
+            (a: { minutesUntil: number }) =>
+              a.minutesUntil > 0 && a.minutesUntil <= 72 * 60
+          )
+          .slice(0, 6)
+          .forEach(
+            (
+              a: {
+                eventId: string;
+                title: string;
+                tier: string;
+                hoursUntil: number;
+                minutesUntil: number;
+                dateVn?: string;
+                date?: string;
+              },
+              i: number
+            ) => {
+              const icon =
+                a.tier === 'extreme'
+                  ? '🔴'
+                  : a.tier === 'very_high'
+                    ? '🟠'
+                    : '🟡';
+              const eta =
+                a.minutesUntil < 60
+                  ? `${a.minutesUntil}m`
+                  : `${Math.round(a.hoursUntil * 10) / 10}h`;
+              fresh.push({
+                id: `news_preview_${stamp}_${i}_${a.eventId}`,
+                accountId: 'news',
+                type: 'info',
+                message: `[Lịch tin ${icon}] ${a.title} · còn ~${eta} · VN ${
+                  a.dateVn || a.date
+                }`,
+                time,
+                read: false,
+              });
+            }
+          );
+      }
+
+      if (fresh.length) {
+        useTradingStore.getState().prependNotifications(fresh);
+      } else {
+        useTradingStore.getState().prependNotifications([
+          {
+            id: `news_empty_${stamp}`,
+            accountId: 'news',
+            type: 'info',
+            message:
+              'Chưa có tin major mới trong cửa sổ 5h/LIVE hoặc 48h digest. Xem tab News để theo dõi full tuần.',
+            time,
+            read: false,
+          },
+        ]);
+      }
+    } catch {
+      /* silent */
+    }
+  };
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black text-white tracking-tight">Risk Notifications</h2>
-          <p className="text-xs text-dark-text-muted mt-1">
-            Cập nhật cảnh báo rủi ro tự động từ các tài khoản trading GoldQuant AI
+          <h2 className="font-display text-2xl font-semibold text-white tracking-tight">
+            Notifications
+          </h2>
+          <p className="text-xs text-dark-text-muted mt-1 font-medium">
+            Cảnh báo risk TK · tin XAU (≤5h / LIVE) · lịch tin 48h
+            {newsCount > 0 && (
+              <span className="text-neon-yellow"> · {newsCount} tin tức</span>
+            )}
           </p>
         </div>
-        <button
-          onClick={markAllNotificationsRead}
-          className="border border-dark-border hover:border-gold hover:text-gold text-white font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center gap-2"
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>Mark all as read</span>
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void pullNewsNow()}
+            className="btn-neon py-2 px-4 text-xs font-semibold flex items-center gap-2 pressable"
+          >
+            <Newspaper className="w-4 h-4 stroke-[1.75]" />
+            <span>Lấy tin XAU ngay</span>
+          </button>
+          <button
+            type="button"
+            onClick={markAllNotificationsRead}
+            className="btn-glass py-2 px-4 text-xs font-semibold flex items-center gap-2 pressable hover:text-neon-cyan"
+          >
+            <ShieldCheck className="w-4 h-4 stroke-[1.75]" />
+            <span>Mark all as read</span>
+          </button>
+        </div>
       </div>
 
-      {/* Notifications list */}
-      <div className="bg-dark-card border border-dark-border rounded-xl overflow-hidden divide-y divide-dark-border">
+      <div className="neon-card-premium neon-card-static overflow-hidden divide-y divide-white/5">
         {notifications.length > 0 ? (
           notifications.map((n) => {
+            const src = sourceLabel(n.accountId);
             return (
-              <div 
-                key={n.id} 
-                className={`p-5 flex gap-4 transition-colors ${
-                  n.read ? 'bg-dark-card/40' : 'bg-gold/5 border-l-2 border-l-gold'
+              <div
+                key={n.id}
+                className={`p-4 sm:p-5 flex gap-3 sm:gap-4 transition-all duration-300 glass-row ${
+                  n.read
+                    ? 'bg-transparent'
+                    : 'bg-neon-cyan/[0.04] border-l-2 border-l-neon-cyan/50'
                 }`}
               >
-                {/* Icon loại thông báo */}
                 <div className="flex-shrink-0 mt-0.5">
-                  {n.type === 'critical' ? (
-                    <div className="p-2 bg-red-500/10 text-red-400 rounded-lg">
-                      <ShieldAlert className="w-5 h-5" />
+                  {n.accountId === 'news' ? (
+                    <div className="p-2.5 bg-neon-yellow/10 text-neon-yellow rounded-full border border-neon-yellow/20">
+                      <Newspaper className="w-5 h-5 stroke-[1.75]" />
+                    </div>
+                  ) : n.type === 'critical' ? (
+                    <div className="p-2.5 bg-neon-pink/10 text-neon-pink rounded-full border border-neon-pink/20">
+                      <ShieldAlert className="w-5 h-5 stroke-[1.75]" />
                     </div>
                   ) : n.type === 'warning' ? (
-                    <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg">
-                      <ShieldAlert className="w-5 h-5" />
+                    <div className="p-2.5 bg-neon-yellow/10 text-neon-yellow rounded-full border border-neon-yellow/20">
+                      <ShieldAlert className="w-5 h-5 stroke-[1.75]" />
                     </div>
                   ) : (
-                    <div className="p-2 bg-blue-500/10 text-blue-400 rounded-lg">
-                      <Info className="w-5 h-5" />
+                    <div className="p-2.5 bg-neon-cyan/10 text-neon-cyan rounded-full border border-neon-cyan/20">
+                      <Info className="w-5 h-5 stroke-[1.75]" />
                     </div>
                   )}
                 </div>
 
-                {/* Nội dung */}
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-white">
-                      Tài khoản: <span className="font-mono text-gold">{n.accountId}</span>
+                <div className="flex-1 space-y-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-sm font-semibold truncate ${src.tone}`}>
+                      {src.label}
                     </span>
-                    <span className="text-[10px] text-dark-text-muted font-mono">{n.time}</span>
+                    <span className="text-[10px] text-dark-text-muted font-mono flex-shrink-0">
+                      {n.time}
+                    </span>
                   </div>
                   <p className="text-sm text-dark-text-light leading-relaxed">
                     {n.message}
@@ -76,44 +275,18 @@ export default function NotificationsPage() {
           })
         ) : (
           <div className="p-12 text-center text-dark-text-muted flex flex-col items-center justify-center">
-            <Bell className="w-12 h-12 text-dark-border mb-3" />
-            <span className="text-sm">Không có thông báo mới nào.</span>
+            <Bell className="w-12 h-12 text-white/10 mb-3 stroke-[1.25]" />
+            <span className="text-sm font-medium">Không có thông báo.</span>
+            <button
+              type="button"
+              onClick={() => void pullNewsNow()}
+              className="mt-4 text-xs text-neon-cyan font-semibold hover:underline inline-flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Kéo tin XAU từ lịch tuần này
+            </button>
           </div>
         )}
-      </div>
-
-      {/* Box cấu hình cảnh báo */}
-      <div className="bg-dark-card border border-dark-border rounded-xl p-5">
-        <h4 className="text-sm font-bold text-white uppercase tracking-wider mb-3">Thiết lập Ngưỡng Cảnh báo Rủi ro</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <label className="block text-xs font-semibold text-dark-text-muted uppercase mb-1.5">Max Drawdown Cảnh Báo (%)</label>
-            <input 
-              type="number" 
-              defaultValue={2}
-              className="w-full bg-dark-input border border-dark-border rounded-lg px-3 py-2 text-sm text-white focus:border-gold focus:outline-none transition-colors"
-            />
-            <span className="text-[10px] text-dark-text-muted mt-1 block">Gửi thông báo warning khi DD vượt ngưỡng này</span>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-dark-text-muted uppercase mb-1.5">Max Drawdown Dừng Lệnh (%)</label>
-            <input 
-              type="number" 
-              defaultValue={5}
-              className="w-full bg-dark-input border border-dark-border rounded-lg px-3 py-2 text-sm text-white focus:border-gold focus:outline-none transition-colors"
-            />
-            <span className="text-[10px] text-dark-text-muted mt-1 block">Gửi cảnh báo critical và tạm dừng AI khi DD chạm ngưỡng</span>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-dark-text-muted uppercase mb-1.5">Kích thước Lệnh Tối Đa (Lots)</label>
-            <input 
-              type="number" 
-              defaultValue={0.05}
-              className="w-full bg-dark-input border border-dark-border rounded-lg px-3 py-2 text-sm text-white focus:border-gold focus:outline-none transition-colors"
-            />
-            <span className="text-[10px] text-dark-text-muted mt-1 block">Cảnh báo nếu AI mở lệnh lớn hơn mức quy định</span>
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -1,0 +1,182 @@
+[
+  {
+    "title": "Core CPI m/m",
+    "country": "USD",
+    "date": "2026-07-15T12:30:00.000Z",
+    "impact": "High",
+    "forecast": "0.2%",
+    "previous": "0.2%",
+    "actual": ""
+  },
+  {
+    "title": "Core CPI y/y",
+    "country": "USD",
+    "date": "2026-07-15T12:30:00.000Z",
+    "impact": "High",
+    "forecast": "2.9%",
+    "previous": "2.9%",
+    "actual": ""
+  },
+  {
+    "title": "CPI m/m",
+    "country": "USD",
+    "date": "2026-07-15T12:30:00.000Z",
+    "impact": "High",
+    "forecast": "0.1%",
+    "previous": "0.1%",
+    "actual": ""
+  },
+  {
+    "title": "CPI y/y",
+    "country": "USD",
+    "date": "2026-07-15T12:30:00.000Z",
+    "impact": "High",
+    "forecast": "2.6%",
+    "previous": "2.4%",
+    "actual": ""
+  },
+  {
+    "title": "Retail Sales m/m",
+    "country": "USD",
+    "date": "2026-07-16T12:30:00.000Z",
+    "impact": "High",
+    "forecast": "0.2%",
+    "previous": "-0.9%",
+    "actual": ""
+  },
+  {
+    "title": "Core Retail Sales m/m",
+    "country": "USD",
+    "date": "2026-07-16T12:30:00.000Z",
+    "impact": "High",
+    "forecast": "0.3%",
+    "previous": "0.0%",
+    "actual": ""
+  },
+  {
+    "title": "Unemployment Claims",
+    "country": "USD",
+    "date": "2026-07-16T12:30:00.000Z",
+    "impact": "Medium",
+    "forecast": "235K",
+    "previous": "233K",
+    "actual": ""
+  },
+  {
+    "title": "Philly Fed Manufacturing Index",
+    "country": "USD",
+    "date": "2026-07-16T12:30:00.000Z",
+    "impact": "Medium",
+    "forecast": "0.5",
+    "previous": "-4.0",
+    "actual": ""
+  },
+  {
+    "title": "Existing Home Sales",
+    "country": "USD",
+    "date": "2026-07-17T14:00:00.000Z",
+    "impact": "Medium",
+    "forecast": "4.00M",
+    "previous": "4.03M",
+    "actual": ""
+  },
+  {
+    "title": "Crude Oil Inventories",
+    "country": "USD",
+    "date": "2026-07-15T14:30:00.000Z",
+    "impact": "Medium",
+    "forecast": "-1.2M",
+    "previous": "-2.1M",
+    "actual": ""
+  },
+  {
+    "title": "Federal Budget Balance",
+    "country": "USD",
+    "date": "2026-07-14T18:00:00.000Z",
+    "impact": "Low",
+    "forecast": "-122.8B",
+    "previous": "-292.6B",
+    "actual": ""
+  },
+  {
+    "title": "ADP Weekly Employment Change",
+    "country": "USD",
+    "date": "2026-07-14T12:15:00.000Z",
+    "impact": "Low",
+    "forecast": "25.0K",
+    "previous": "21.0K",
+    "actual": ""
+  },
+  {
+    "title": "FOMC Member Bowman Speaks",
+    "country": "USD",
+    "date": "2026-07-13T09:25:00.000Z",
+    "impact": "Low",
+    "forecast": "",
+    "previous": "",
+    "actual": ""
+  },
+  {
+    "title": "FOMC Member Waller Speaks",
+    "country": "USD",
+    "date": "2026-07-13T14:00:00.000Z",
+    "impact": "Medium",
+    "forecast": "",
+    "previous": "",
+    "actual": ""
+  },
+  {
+    "title": "ECB President Lagarde Speaks",
+    "country": "EUR",
+    "date": "2026-07-14T13:00:00.000Z",
+    "impact": "Medium",
+    "forecast": "",
+    "previous": "",
+    "actual": ""
+  },
+  {
+    "title": "Monetary Policy Meeting Accounts",
+    "country": "EUR",
+    "date": "2026-07-17T11:30:00.000Z",
+    "impact": "Medium",
+    "forecast": "",
+    "previous": "",
+    "actual": ""
+  },
+  {
+    "title": "BOE Gov Bailey Speaks",
+    "country": "GBP",
+    "date": "2026-07-15T10:00:00.000Z",
+    "impact": "Medium",
+    "forecast": "",
+    "previous": "",
+    "actual": ""
+  },
+  {
+    "title": "Flash Manufacturing PMI",
+    "country": "EUR",
+    "date": "2026-07-16T08:00:00.000Z",
+    "impact": "High",
+    "forecast": "49.8",
+    "previous": "49.5",
+    "actual": ""
+  },
+  {
+    "title": "Flash Services PMI",
+    "country": "EUR",
+    "date": "2026-07-16T08:00:00.000Z",
+    "impact": "High",
+    "forecast": "50.2",
+    "previous": "50.1",
+    "actual": ""
+  },
+  {
+    "title": "CB Consumer Confidence",
+    "country": "USD",
+    "date": "2026-07-17T14:00:00.000Z",
+    "impact": "High",
+    "forecast": "96.0",
+    "previous": "93.0",
+    "actual": ""
+  }
+]

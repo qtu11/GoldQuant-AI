@@ -1,6 +1,6 @@
 /**
  * Currency Utility - Tỷ giá realtime USD/VND + quy đổi USC/USD
- * 
+ *
  * Quy tắc:
  * - 100 USC (cent) = 1 USD
  * - Tỷ giá VND/USD: lấy realtime từ API
@@ -10,6 +10,33 @@
 // QUY ĐỔI USC ↔ USD
 // ==========================================
 const USC_TO_USD_RATE = 0.01; // 1 USC = 0.01 USD => 100 USC = 1 USD
+
+export type AccountCurrency = 'USD' | 'USC';
+
+/**
+ * Chuẩn hóa currency từ Firestore / form (tránh string lạ).
+ */
+export function normalizeCurrency(value: unknown): AccountCurrency {
+  return String(value || '')
+    .trim()
+    .toUpperCase() === 'USC'
+    ? 'USC'
+    : 'USD';
+}
+
+/**
+ * Chỉ loại tài khoản có chữ "cent" mới là USC.
+ * (XM/FBS Micro ≠ cent account — không auto gán USC.)
+ */
+export function isCentAccountType(accountType: string): boolean {
+  return String(accountType || '')
+    .toLowerCase()
+    .includes('cent');
+}
+
+export function defaultSymbolForCurrency(currency: AccountCurrency): string {
+  return currency === 'USC' ? 'XAUUSDc' : 'XAUUSD';
+}
 
 /**
  * Chuyển từ USC sang USD
@@ -26,12 +53,26 @@ export function usdToUsc(usdAmount: number): number {
 }
 
 /**
+ * Đổi số tiền giữa USD ↔ USC (làm tròn 2 chữ số).
+ */
+export function convertAmountBetweenCurrencies(
+  amount: number,
+  from: AccountCurrency,
+  to: AccountCurrency
+): number {
+  if (from === to) return amount;
+  const n = Number(amount) || 0;
+  const converted = from === 'USC' ? uscToUsd(n) : usdToUsc(n);
+  return Math.round(converted * 100) / 100;
+}
+
+/**
  * Quy đổi giá trị tài khoản sang USD (dùng khi tài khoản là USC)
  * @param amount - Số tiền gốc
  * @param currency - Loại tiền tệ (USD hoặc USC)
  * @returns Giá trị tương đương bằng USD
  */
-export function toUsd(amount: number, currency: 'USD' | 'USC'): number {
+export function toUsd(amount: number, currency: AccountCurrency): number {
   if (currency === 'USC') return uscToUsd(amount);
   return amount;
 }
@@ -39,10 +80,17 @@ export function toUsd(amount: number, currency: 'USD' | 'USC'): number {
 /**
  * Format hiển thị tiền theo đơn vị
  */
-export function formatCurrency(amount: number, currency: 'USD' | 'USC', showSymbol = true): string {
+export function formatCurrency(
+  amount: number,
+  currency: AccountCurrency,
+  showSymbol = true
+): string {
   const rounded = Math.round(amount * 100) / 100;
-  const formatted = rounded.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  
+  const formatted = rounded.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+
   if (showSymbol) {
     return currency === 'USD' ? `$${formatted}` : `${formatted} USC`;
   }
@@ -118,18 +166,19 @@ async function fetchFromExchangeRateApi(): Promise<ExchangeRateCache | null> {
   return null;
 }
 
-// --- API Source 2: Open Exchange Rates (free tier) ---
+// --- API Source 2: floatrates.com (backup khác domain) ---
 async function fetchFromOpenExchangeRates(): Promise<ExchangeRateCache | null> {
-  const res = await fetch('https://open.er-api.com/v6/latest/USD', {
+  const res = await fetch('https://www.floatrates.com/daily/usd.json', {
     signal: AbortSignal.timeout(5000),
   });
   if (!res.ok) return null;
   const data = await res.json();
-  if (data?.rates?.VND) {
+  const vnd = data?.vnd?.rate;
+  if (typeof vnd === 'number' && vnd > 0) {
     return {
-      rate: data.rates.VND,
+      rate: vnd,
       timestamp: Date.now(),
-      source: 'OpenExchangeRates'
+      source: 'FloatRates'
     };
   }
   return null;
@@ -160,19 +209,44 @@ export function usdToVnd(usdAmount: number, rate: number): number {
 }
 
 /**
- * Format VND
+ * Format VND — dùng "VND" (ASCII) để tránh glyph ₫/đ lỗi font trên Windows.
  */
 export function formatVnd(amount: number): string {
-  if (Math.abs(amount) >= 1_000_000_000) {
-    return `${(amount / 1_000_000_000).toFixed(2)} tỷ ₫`;
+  const n = Number(amount);
+  if (!Number.isFinite(n) || Math.abs(n) < 0.5) {
+    return '0 VND';
   }
-  if (Math.abs(amount) >= 1_000_000) {
-    return `${(amount / 1_000_000).toFixed(1)} tr ₫`;
+  if (Math.abs(n) >= 1_000_000_000) {
+    return `${(n / 1_000_000_000).toFixed(2)} tỷ VND`;
   }
-  if (Math.abs(amount) >= 1_000) {
-    return `${(amount / 1_000).toFixed(0)}k ₫`;
+  if (Math.abs(n) >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(1)} tr VND`;
   }
-  return `${Math.round(amount).toLocaleString('vi-VN')} ₫`;
+  if (Math.abs(n) >= 1_000) {
+    return `${(n / 1_000).toFixed(0)}k VND`;
+  }
+  return `${Math.round(n).toLocaleString('en-US')} VND`;
+}
+
+/**
+ * Format USD gọn cho KPI (primary hiển thị).
+ */
+export function formatUsd(amount: number, signed = false): string {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return '—';
+  if (Math.abs(n) < 0.005) return '$0';
+  const abs = Math.abs(n);
+  const body =
+    abs >= 1_000_000
+      ? `$${(abs / 1_000_000).toFixed(2)}M`
+      : abs >= 10_000
+        ? `$${Math.round(abs).toLocaleString('en-US')}`
+        : `$${abs.toLocaleString('en-US', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          })}`;
+  const sign = n < 0 ? '−' : signed ? '+' : '';
+  return `${sign}${body}`;
 }
 
 /**

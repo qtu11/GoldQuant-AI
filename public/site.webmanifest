@@ -1,0 +1,29 @@
+{
+  "name": "GoldQuant AI — Risk Manager",
+  "short_name": "GoldQuant AI",
+  "description": "XAUUSD multi-account risk dashboard · AI Advisor · Economic calendar · Monte Carlo",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0f1a",
+  "theme_color": "#0b0f1a",
+  "lang": "vi",
+  "icons": [
+    {
+      "src": "/favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

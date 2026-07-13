@@ -1,0 +1,368 @@
+/* OwnerRow — compact accordion per owner */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  border-radius: 1rem;
+}
+
+/* ----- Header row (always visible) ----- */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  width: 100%;
+  padding: 0.875rem 1.125rem;
+  cursor: pointer;
+  text-align: left;
+  box-sizing: border-box;
+  position: relative;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  border-radius: 1rem;
+}
+
+.header > * {
+  position: relative;
+  z-index: 2;
+}
+
+.header:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(76, 201, 255, 0.06);
+}
+
+.header:focus-visible {
+  outline: 2px solid rgba(76, 201, 255, 0.55);
+  outline-offset: 2px;
+}
+
+.headerOpen {
+  border-radius: 1rem 1rem 0 0;
+}
+
+/* Accent left stripe */
+.accent0 { border-left: 3px solid rgba(76, 201, 255, 0.6) !important; }
+.accent1 { border-left: 3px solid rgba(138, 125, 255, 0.6) !important; }
+.accent2 { border-left: 3px solid rgba(255, 213, 79, 0.6) !important; }
+.accent3 { border-left: 3px solid rgba(255, 123, 146, 0.6) !important; }
+.accent4 { border-left: 3px solid rgba(45, 255, 180, 0.6) !important; }
+.accent5 { border-left: 3px solid rgba(59, 130, 246, 0.6) !important; }
+
+/* ----- Avatar / icon ----- */
+.avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, rgba(138, 125, 255, 0.35), rgba(76, 201, 255, 0.25));
+  border: 1px solid rgba(138, 125, 255, 0.35);
+}
+
+.avatarUnassigned {
+  background: linear-gradient(135deg, rgba(255, 213, 79, 0.3), rgba(255, 170, 50, 0.2));
+  border-color: rgba(255, 213, 79, 0.35);
+  color: #ffd54f;
+}
+
+/* ----- Owner info ----- */
+.info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.ownerName {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.ownerNameUnassigned {
+  color: #ffd54f;
+}
+
+.accountCount {
+  font-size: 10px;
+  font-weight: 500;
+  color: #8e8e93;
+  margin-top: 2px;
+}
+
+/* ----- Metrics ----- */
+.metricsRow {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: center;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.metricLabel {
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8e8e93;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.metricValue {
+  margin-top: 3px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.profitPos { color: #2dffb4; }
+.profitNeg { color: #ff7b92; }
+
+/* ----- Status summary ----- */
+.statusSummary {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.chipGreen {
+  color: #2dffb4;
+  background: rgba(45, 255, 180, 0.1);
+  border-color: rgba(45, 255, 180, 0.28);
+}
+
+.chipYellow {
+  color: #ffd54f;
+  background: rgba(255, 213, 79, 0.1);
+  border-color: rgba(255, 213, 79, 0.28);
+}
+
+.chipPink {
+  color: #ff7b92;
+  background: rgba(255, 123, 146, 0.1);
+  border-color: rgba(255, 123, 146, 0.28);
+}
+
+/* ----- Chevron ----- */
+.chevron {
+  color: #4a5068;
+  flex-shrink: 0;
+  transition: color 0.2s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.header:hover .chevron {
+  color: #4cc9ff;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+  color: #4cc9ff;
+}
+
+/* ----- Expanded content ----- */
+.content {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.25s ease,
+              padding 0.3s ease;
+  padding: 0 1rem;
+  background: rgba(15, 20, 35, 0.5);
+  border-radius: 0 0 1rem 1rem;
+  border-top: none;
+}
+
+.contentOpen {
+  max-height: 600px;
+  opacity: 1;
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ----- Account item inside expanded ----- */
+.accountItem {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  margin-top: 0.375rem;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.accountItem:first-child {
+  margin-top: 0;
+}
+
+.accountItem:hover {
+  background: rgba(76, 201, 255, 0.06);
+  border-color: rgba(76, 201, 255, 0.15);
+}
+
+.accId {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  min-width: 90px;
+}
+
+.accName {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #8a7dff;
+  margin-left: -0.25rem;
+  white-space: nowrap;
+}
+
+.accMetrics {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.accMetric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.accMetricLabel {
+  font-size: 7px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #8e8e93;
+  letter-spacing: 0.05em;
+}
+
+.accMetricValue {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.accChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.accArrow {
+  color: #4a5068;
+  flex-shrink: 0;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.accountItem:hover .accArrow {
+  color: #4cc9ff;
+  transform: translateX(2px);
+}
+
+.settingsBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: #8e8e93;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.settingsBtn:hover {
+  color: #4cc9ff;
+  border-color: rgba(76, 201, 255, 0.4);
+  background: rgba(76, 201, 255, 0.1);
+}
+
+/* ----- Responsive ----- */
+@media (max-width: 580px) {
+  .header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.75rem;
+  }
+
+  .metricsRow {
+    order: 3;
+    width: 100%;
+    justify-content: space-around;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .accountItem {
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .accMetrics {
+    width: 100%;
+    justify-content: space-around;
+    padding-top: 0.375rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+  }
+}

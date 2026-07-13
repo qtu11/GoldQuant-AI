@@ -1,15 +1,31 @@
 'use client';
 
-import React, { useRef, useState, useCallback } from 'react';
-import { Upload, FileText, CheckCircle2, AlertCircle, FileSpreadsheet, Globe, File, Sparkles } from 'lucide-react';
+import React, { useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { Upload, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { useTradingStore } from '../store/useTradingStore';
-import { detectFileType, getAcceptedFileTypes, getFileTypeLabel, parseFile, type SupportedFileType } from '../utils/fileParser';
+import {
+  detectFileType,
+  getAcceptedFileTypes,
+  getFileTypeLabel,
+  parseFile,
+  type SupportedFileType,
+} from '../utils/fileParser';
+import InfoTip from './InfoTip';
 
 interface FileUploadProps {
   accountId: string;
+  /** compact = 1 hàng (mặc định). full = dropzone lớn (hiếm dùng) */
+  variant?: 'compact' | 'full';
 }
 
-export default function FileUpload({ accountId }: FileUploadProps) {
+export type FileUploadHandle = {
+  openPicker: () => void;
+};
+
+const FileUpload = forwardRef<FileUploadHandle, FileUploadProps>(function FileUpload(
+  { accountId, variant = 'compact' },
+  ref
+) {
   const { uploadHistory } = useTradingStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragActive, setIsDragActive] = useState(false);
@@ -19,226 +35,248 @@ export default function FileUpload({ accountId }: FileUploadProps) {
   const [tradeCount, setTradeCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const processFile = useCallback(async (file: File) => {
-    if (!file) return;
-
-    const detectedType = detectFileType(file);
-    setFileType(detectedType);
-    setFileName(file.name);
-    setStatus('loading');
-    setErrorMessage('');
-    setTradeCount(0);
-
-    try {
-      let content: string | ArrayBuffer;
-
-      if (detectedType === 'excel') {
-        content = await readFileAsArrayBuffer(file);
-      } else {
-        content = await readFileAsText(file);
-      }
-
-      const trades = await parseFile(content, detectedType);
-
-      if (trades.length === 0) {
-        setStatus('error');
-        setErrorMessage(
-          detectedType === 'unknown'
-            ? `Không nhận diện được định dạng file "${file.name}". Hỗ trợ: CSV, HTML, Excel (.xlsx/.xls), TXT.`
-            : `Không tìm thấy dữ liệu giao dịch hợp lệ trong file ${getFileTypeLabel(detectedType)}. Hãy kiểm tra định dạng cột (cần có: Ticket, Time, Type, Profit...).`
-        );
+  useImperativeHandle(ref, () => ({
+    openPicker: () => {
+      const el = fileInputRef.current;
+      if (!el) {
+        console.warn('[FileUpload] input ref missing');
         return;
       }
+      // Reset value để chọn lại cùng file vẫn fire onChange
+      el.value = '';
+      el.click();
+    },
+  }));
 
-      uploadHistory(accountId, trades);
-      setTradeCount(trades.length);
-      setStatus('success');
+  const processFile = useCallback(
+    async (file: File) => {
+      if (!file) return;
 
-      setTimeout(() => {
-        setStatus('idle');
-        setFileName('');
-        setTradeCount(0);
-      }, 5000);
+      const detectedType = detectFileType(file);
+      setFileType(detectedType);
+      setFileName(file.name);
+      setStatus('loading');
+      setErrorMessage('');
+      setTradeCount(0);
 
-    } catch (err) {
-      console.error('Lỗi khi xử lý file:', err);
-      setStatus('error');
-      setErrorMessage(`Lỗi khi đọc file: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  }, [accountId, uploadHistory]);
+      try {
+        // Luôn đọc ArrayBuffer — HTML MT5 thường UTF-16; Excel cần binary
+        const buffer = await file.arrayBuffer();
+        let type = detectedType;
+        if (type === 'unknown') {
+          // đoán theo magic/content
+          const u8 = new Uint8Array(buffer);
+          if (u8[0] === 0x50 && u8[1] === 0x4b) type = 'excel'; // zip/xlsx
+          else type = 'html';
+        }
+
+        const trades = await parseFile(buffer, type);
+
+        if (trades.length === 0) {
+          setStatus('error');
+          setErrorMessage(
+            `Không tìm thấy lệnh đóng hợp lệ trong "${file.name}" (${getFileTypeLabel(type)}). ` +
+              `Dùng Report History đầy đủ (Positions) từ MT5: History → Report → Excel/HTML.`
+          );
+          return;
+        }
+
+        // Upload full report → thay thế history (parseFile đã gộp đúng)
+        await uploadHistory(accountId, trades);
+        setTradeCount(trades.length);
+        setStatus('success');
+
+        setTimeout(() => {
+          setStatus('idle');
+          setFileName('');
+          setTradeCount(0);
+        }, 4000);
+      } catch (err) {
+        console.error('Lỗi khi xử lý file:', err);
+        setStatus('error');
+        setErrorMessage(
+          `Lỗi khi đọc file: ${err instanceof Error ? err.message : 'Unknown error'}`
+        );
+      }
+    },
+    [accountId, uploadHistory]
+  );
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setIsDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setIsDragActive(false);
-    }
+    if (e.type === 'dragenter' || e.type === 'dragover') setIsDragActive(true);
+    else if (e.type === 'dragleave') setIsDragActive(false);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processFile(e.dataTransfer.files[0]);
-    }
-  }, [processFile]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragActive(false);
+      if (e.dataTransfer.files?.[0]) processFile(e.dataTransfer.files[0]);
+    },
+    [processFile]
+  );
 
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    if (e.target.files && e.target.files[0]) {
-      processFile(e.target.files[0]);
-      e.target.value = '';
-    }
-  }, [processFile]);
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      e.preventDefault();
+      if (e.target.files?.[0]) {
+        processFile(e.target.files[0]);
+        e.target.value = '';
+      }
+    },
+    [processFile]
+  );
 
-  const handleButtonClick = () => {
-    fileInputRef.current?.click();
+  const openPicker = () => {
+    const el = fileInputRef.current;
+    if (!el) return;
+    el.value = '';
+    el.click();
   };
 
-  const getFileIcon = () => {
-    switch (fileType) {
-      case 'excel': return <FileSpreadsheet className="w-5 h-5 text-emerald-400" />;
-      case 'html': return <Globe className="w-5 h-5 text-blue-400" />;
-      case 'csv':
-      case 'txt': return <FileText className="w-5 h-5 text-amber-400" />;
-      default: return <File className="w-5 h-5 text-dark-text-muted" />;
-    }
-  };
+  const inputEl = (
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept={getAcceptedFileTypes()}
+      className="sr-only"
+      tabIndex={-1}
+      onChange={handleChange}
+    />
+  );
 
-  return (
-    <div className="space-y-3">
-      <div 
+  if (variant === 'compact') {
+    return (
+      <div
         onDragEnter={handleDrag}
         onDragOver={handleDrag}
         onDragLeave={handleDrag}
         onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-xl p-6 text-center transition-all duration-300 flex flex-col items-center justify-center min-h-[170px] cursor-pointer ${
-          isDragActive 
-            ? 'border-gold bg-gold/5 scale-[1.01] shadow-[0_0_20px_rgba(245,182,27,0.1)]' 
+        className={`neon-card-premium neon-card-static flex flex-wrap items-center gap-3 px-4 py-3 border transition-all duration-300 ${
+          isDragActive
+            ? 'border-neon-cyan/50 bg-neon-cyan/10 shadow-[0_0_28px_rgba(76,201,255,0.12)]'
             : status === 'success'
-              ? 'border-emerald-500 bg-emerald-500/5'
+              ? 'border-neon-green/35'
               : status === 'error'
-                ? 'border-red-500 bg-red-500/5'
-                : 'border-white/10 hover:border-gold/50 bg-white/2 hover:bg-white/4 shadow-inner'
+                ? 'border-neon-pink/40'
+                : 'border-white/10'
         }`}
-        onClick={handleButtonClick}
       >
-        <input 
-          ref={fileInputRef}
-          type="file"
-          accept={getAcceptedFileTypes()}
-          className="hidden"
-          onChange={handleChange}
-        />
+        {inputEl}
 
-        {status === 'idle' && (
-          <>
-            <div className="p-3 bg-gold/10 rounded-full text-gold mb-3 ring-2 ring-gold/10 pulse-glow-gold">
-              <Upload className="w-5.5 h-5.5" />
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="icon-tile icon-tile-cyan !w-9 !h-9 flex-shrink-0">
+            {status === 'loading' ? (
+              <Loader2 className="w-4 h-4 animate-spin stroke-[1.75]" />
+            ) : status === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-neon-green stroke-[1.75]" />
+            ) : status === 'error' ? (
+              <AlertCircle className="w-4 h-4 text-neon-pink stroke-[1.75]" />
+            ) : (
+              <Upload className="w-4 h-4 stroke-[1.75]" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-white uppercase tracking-wider">
+                Upload History
+              </span>
+              <InfoTip title="Cách tải lịch sử MT5" align="left">
+                <p>
+                  <strong className="text-white">1.</strong> MT5 → History → Report → Save as
+                  Excel / HTML / CSV.
+                </p>
+                <p>
+                  <strong className="text-white">2.</strong> Kéo thả file vào đây hoặc bấm «Chọn
+                  file».
+                </p>
+                <p>
+                  <strong className="text-white">3.</strong> Hệ thống parse lệnh, cập nhật stats +
+                  equity (kèm nạp/rút nếu có).
+                </p>
+                <p className="text-neon-cyan/90">Hỗ trợ: CSV · HTML · Excel (.xlsx) · TXT</p>
+              </InfoTip>
             </div>
-            <p className="text-sm font-extrabold text-white">Upload History</p>
-            <p className="text-xs text-dark-text-muted mt-1.5 px-4 leading-normal">
-              Kéo thả hoặc nhấp chọn file lịch sử MT5
-            </p>
-            {/* Badges */}
-            <div className="flex flex-wrap items-center justify-center gap-1.5 mt-4">
-              {[
-                { label: 'CSV', icon: '📊' },
-                { label: 'HTML', icon: '🌐' },
-                { label: 'Excel', icon: '📗' },
-                { label: 'TXT', icon: '📄' },
-              ].map(ft => (
-                <span key={ft.label} className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[9px] font-black text-dark-text-light uppercase tracking-wider flex items-center gap-1">
-                  <span>{ft.icon}</span>
-                  {ft.label}
-                </span>
-              ))}
-            </div>
-          </>
-        )}
-
-        {status === 'loading' && (
-          <div className="flex flex-col items-center">
-            <div className="relative mb-3 flex items-center justify-center">
-              <div className="w-11 h-11 border-4 border-gold border-t-transparent rounded-full animate-spin pulse-glow-gold"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                {getFileIcon()}
-              </div>
-            </div>
-            <p className="text-sm font-bold text-white animate-pulse">Đang phân tích dữ liệu...</p>
-            <p className="text-xs text-dark-text-muted mt-1.5 font-mono flex items-center gap-1.5 bg-white/3 border border-white/5 px-2 py-0.5 rounded">
-              {fileName}
+            <p className="text-[10px] text-dark-text-muted truncate mt-0.5">
+              {status === 'loading' && `Đang phân tích ${fileName}…`}
+              {status === 'success' && `✓ ${tradeCount} lệnh · ${fileName}`}
+              {status === 'error' && (errorMessage || 'Lỗi — thử lại')}
+              {status === 'idle' &&
+                (isDragActive
+                  ? 'Thả file vào đây…'
+                  : 'Kéo thả file MT5 hoặc chọn · CSV / HTML / Excel / TXT')}
             </p>
           </div>
-        )}
+        </div>
 
-        {status === 'success' && (
-          <div className="flex flex-col items-center animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-3 bg-emerald-500/10 rounded-full text-emerald-400 mb-3 ring-2 ring-emerald-500/10">
-              <CheckCircle2 className="w-6 h-6" />
-            </div>
-            <p className="text-sm font-extrabold text-emerald-400">Phân tích thành công!</p>
-            <p className="text-xs text-dark-text-muted mt-1.5 max-w-xs">
-              Nạp thành công <span className="text-emerald-400 font-bold font-mono bg-emerald-500/5 border border-emerald-500/10 px-1.5 py-0.2 rounded">{tradeCount}</span> lệnh giao dịch.
-            </p>
-            <p className="text-[10px] text-dark-text-muted mt-1 font-mono">{fileName}</p>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="hidden sm:flex gap-1">
+            {['CSV', 'HTML', 'XLSX', 'TXT'].map((t) => (
+              <span
+                key={t}
+                className="text-[8px] font-bold px-1.5 py-0.5 rounded border border-dark-border text-dark-text-muted"
+              >
+                {t}
+              </span>
+            ))}
           </div>
-        )}
-
-        {status === 'error' && (
-          <div className="flex flex-col items-center animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-3 bg-red-500/10 rounded-full text-red-400 mb-3 ring-2 ring-red-500/10">
-              <AlertCircle className="w-6 h-6" />
-            </div>
-            <p className="text-sm font-bold text-red-400">Phân tích thất bại!</p>
-            <p className="text-xs text-dark-text-muted mt-1.5 px-4 text-center leading-normal max-w-xs">
-              {errorMessage || 'Vui lòng kiểm tra file và thử lại.'}
-            </p>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setStatus('idle'); setErrorMessage(''); }}
-              className="mt-3.5 px-3.5 py-1 text-xs font-bold text-white bg-white/5 hover:bg-white/10 border border-white/5 rounded-md transition-all active:scale-95 cursor-pointer"
+          {status === 'error' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setStatus('idle');
+                setErrorMessage('');
+              }}
+              className="text-[10px] font-bold px-3 py-1.5 rounded-lg border border-rose-500/40 text-rose-300 hover:bg-rose-500/10"
             >
               Thử lại
             </button>
-          </div>
-        )}
+          ) : (
+            <button
+              type="button"
+              onClick={openPicker}
+              disabled={status === 'loading'}
+              className="text-[10px] font-bold px-3 py-1.5 rounded-lg border border-neon-purple/40 text-neon-purple hover:bg-neon-purple/10 disabled:opacity-40"
+            >
+              Chọn file
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // full dropzone (ít dùng)
+  return (
+    <div className="space-y-3">
+      <div
+        onDragEnter={handleDrag}
+        onDragOver={handleDrag}
+        onDragLeave={handleDrag}
+        onDrop={handleDrop}
+        className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer min-h-[140px] flex flex-col items-center justify-center ${
+          isDragActive
+            ? 'border-neon-cyan bg-neon-cyan/10'
+            : 'border-dark-border hover:border-neon-purple/50 bg-dark-card'
+        }`}
+        onClick={openPicker}
+      >
+        {inputEl}
+        <Upload className="w-6 h-6 text-neon-cyan mb-2" />
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-extrabold text-white">Upload History</p>
+          <InfoTip title="Cách tải lịch sử MT5">
+            <p>MT5 → History → Report → Excel/HTML/CSV. Kéo thả hoặc chọn file.</p>
+          </InfoTip>
+        </div>
+        <p className="text-xs text-dark-text-muted mt-1">CSV · HTML · Excel · TXT</p>
       </div>
     </div>
   );
-}
+});
 
-function readFileAsText(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result;
-      if (typeof result === 'string') {
-        resolve(result);
-      } else {
-        reject(new Error('Failed to read file as text'));
-      }
-    };
-    reader.onerror = () => reject(new Error('File read error'));
-    reader.readAsText(file, 'utf-8');
-  });
-}
+export default FileUpload;
 
-function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result;
-      if (result instanceof ArrayBuffer) {
-        resolve(result);
-      } else {
-        reject(new Error('Failed to read file as ArrayBuffer'));
-      }
-    };
-    reader.onerror = () => reject(new Error('File read error'));
-    reader.readAsArrayBuffer(file);
-  });
-}

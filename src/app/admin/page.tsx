@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useTradingStore } from '../../store/useTradingStore';
-import { Shield, Users, Settings, Plus, CheckCircle, Edit, Trash2 } from 'lucide-react';
+import { Shield, Users, Settings, Plus, Edit, Trash2 } from 'lucide-react';
 import CreateAccountModal from '../../components/CreateAccountModal';
 
 export default function AdminPortalPage() {
@@ -25,7 +25,7 @@ export default function AdminPortalPage() {
         </div>
         <button
           onClick={() => setIsCreateOpen(true)}
-          className="bg-gold hover:bg-gold-hover text-dark-bg font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 text-xs transition-all cursor-pointer gold-glow-hover"
+          className="btn-neon py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs cursor-pointer active:scale-98"
         >
           <Plus className="w-4 h-4" />
           <span>Create Account</span>
@@ -59,7 +59,7 @@ export default function AdminPortalPage() {
       </div>
 
       {activeSubTab === 'accounts' ? (
-        <div className="bg-dark-card border border-dark-border rounded-xl overflow-hidden">
+        <div className="neon-card !rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-xs font-mono">
               <thead>
@@ -83,14 +83,22 @@ export default function AdminPortalPage() {
                     <td className="py-3.5 px-4 text-dark-text-muted">{acc.platform}</td>
                     <td className="py-3.5 px-4 text-white">{acc.symbol}</td>
                     <td className="py-3.5 px-4 text-right text-dark-text-light">
-                      ${acc.initialCapital.toLocaleString()}
+                      {acc.currency === 'USC'
+                        ? `${acc.initialCapital.toLocaleString()} USC`
+                        : `$${acc.initialCapital.toLocaleString()}`}
                     </td>
                     <td className="py-3.5 px-4 text-right text-gold font-bold">
-                      ${acc.currentEquity.toLocaleString()}
+                      {acc.currency === 'USC'
+                        ? `${acc.currentEquity.toLocaleString()} USC`
+                        : `$${acc.currentEquity.toLocaleString()}`}
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <span className={`px-2 py-0.5 rounded font-black ${
-                        acc.riskScore >= 90 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                        acc.riskScore < 30
+                          ? 'bg-emerald-500/10 text-emerald-400'
+                          : acc.riskScore < 60
+                            ? 'bg-amber-500/10 text-amber-400'
+                            : 'bg-red-500/10 text-red-400'
                       }`}>
                         {acc.riskScore}
                       </span>

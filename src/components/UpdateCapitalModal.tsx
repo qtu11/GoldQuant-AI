@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useTradingStore } from '../store/useTradingStore';
 import { X, Coins, Check } from 'lucide-react';
 
@@ -14,11 +15,15 @@ export default function UpdateCapitalModal({ isOpen, onClose, accountId }: Updat
   const { accounts, updateCapital } = useTradingStore();
   const [initialCapital, setInitialCapital] = useState(2000);
   const [currentEquity, setCurrentEquity] = useState(3149);
+  const [mounted, setMounted] = useState(false);
 
   const targetAcc = accounts.find(a => a.id === accountId);
   const isCent = targetAcc?.currency === 'USC';
 
-  // Load thông tin tài khoản hiện tại khi mở modal
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (targetAcc) {
       setInitialCapital(targetAcc.initialCapital);
@@ -26,17 +31,40 @@ export default function UpdateCapitalModal({ isOpen, onClose, accountId }: Updat
     }
   }, [accountId, accounts, isOpen, targetAcc]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isOpen]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  if (!isOpen || !mounted) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateCapital(accountId, Number(initialCapital), Number(currentEquity));
-    onClose();
+    const init = Number(initialCapital);
+    const eq = Number(currentEquity);
+    if (!Number.isFinite(init) || init < 0) {
+      alert('Vốn ban đầu không hợp lệ');
+      return;
+    }
+    if (!Number.isFinite(eq)) {
+      alert('Equity không hợp lệ');
+      return;
+    }
+    try {
+      await updateCapital(accountId, init, eq);
+      onClose();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Cập nhật vốn thất bại');
+    }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="glass-effect-premium rounded-2xl w-full max-w-md overflow-hidden border border-white/10 shadow-2xl animate-in fade-in zoom-in-95 duration-300 relative">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] bg-black/65 flex items-center justify-center p-4 backdrop-blur-2xl animate-in fade-in duration-200">
+      <div className="liquid-modal-panel max-w-md w-full relative animate-in fade-in zoom-in-95 duration-300">
         
         {/* Top glowing bar */}
         <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-gold to-transparent opacity-80" />
@@ -69,7 +97,8 @@ export default function UpdateCapitalModal({ isOpen, onClose, accountId }: Updat
             <input 
               type="number"
               required
-              min="10"
+              min="0"
+              step="0.01"
               value={initialCapital}
               onChange={e => setInitialCapital(Number(e.target.value))}
               className="w-full bg-white/3 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-colors font-mono font-bold text-gold"
@@ -83,7 +112,8 @@ export default function UpdateCapitalModal({ isOpen, onClose, accountId }: Updat
             <input 
               type="number"
               required
-              min="10"
+              min="0"
+              step="0.01"
               value={currentEquity}
               onChange={e => setCurrentEquity(Number(e.target.value))}
               className="w-full bg-white/3 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:outline-none transition-colors font-mono font-bold text-gold"
@@ -109,6 +139,7 @@ export default function UpdateCapitalModal({ isOpen, onClose, accountId }: Updat
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
